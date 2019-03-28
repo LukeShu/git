@@ -12,7 +12,7 @@ SYNOPSIS
 'git subtree' add   -P <prefix> <commit>
 'git subtree' add   -P <prefix> <repository> <ref>
 'git subtree' pull  -P <prefix> <repository> <ref>
-'git subtree' push  -P <prefix> <repository> <ref>
+'git subtree' push  -P <prefix> <repository> <refspec>
 'git subtree' merge -P <prefix> <commit>
 'git subtree' split -P <prefix> [OPTIONS] [<commit>]
 
