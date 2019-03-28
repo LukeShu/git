@@ -31,7 +31,6 @@ squash        merge subtree changes as a single commit
 PATH=$PATH:$(git --exec-path)
 . git-sh-setup
 
-quiet=
 branch=
 debug=
 command=
@@ -50,15 +49,8 @@ debug () {
 	fi
 }
 
-say () {
-	if test -z "$quiet"
-	then
-		printf "%s\n" "$*" >&2
-	fi
-}
-
 progress () {
-	if test -z "$quiet"
+	if test -z "$GIT_QUIET"
 	then
 		printf "%s\r" "$*" >&2
 	fi
@@ -93,7 +85,7 @@ main () {
 
 		case "$opt" in
 		-q)
-			quiet=1
+			GIT_QUIET=1
 			;;
 		-d)
 			debug=1
@@ -201,7 +193,7 @@ main () {
 	fi
 
 	debug "command: {$command}"
-	debug "quiet: {$quiet}"
+	debug "quiet: {$GIT_QUIET}"
 	debug "revs: {$revs}"
 	debug "dir: {$dir}"
 	debug "opts: {$*}"
