@@ -268,7 +268,7 @@ cache_setup () {
 
 # Usage: cache_get [REVS...]
 cache_get () {
-	local oldrev newrev
+	local oldrev
 	for oldrev in "$@"
 	do
 		if test -r "$cachedir/$oldrev"
@@ -287,7 +287,7 @@ cache_miss () {
 	do
 		if ! test -r "$cachedir/$oldrev"
 		then
-			echo $oldrev
+			echo "$oldrev"
 		fi
 	done
 }
@@ -316,7 +316,9 @@ set_notree () {
 	echo "1" > "$cachedir/notree/$1"
 }
 
-# Usage: cache_set COMMIT SUBTREE_COMMIT
+# Usage: cache_set_internal COMMIT SUBTREE_COMMIT
+#
+# See cache_set.
 cache_set_internal () {
 	assert test $# = 2
 	local key="$1"
@@ -325,7 +327,14 @@ cache_set_internal () {
 		test "$key" != "latest_new" &&
 		test -e "$cachedir/$key"
 	then
-		die "$cachedir cache for $key already exists!"
+		local oldval
+		oldval=$(cat "$cachedir/$key")
+		if test "$oldval" = "$val"; then
+			debug "already cached: commit:$key = subtree_commit:$val"
+			return
+		else
+			die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
+		fi
 	fi
 	debug "caching commit:$key = subtree_commit:$val"
 	echo "$val" >"$cachedir/$key"
@@ -455,6 +464,7 @@ find_existing_splits () {
 
 	if test -n "$arg_split_onto"
 	then
+		debug "  cli --onto: $arg_split_onto"
 		cache_set "$arg_split_onto" "$arg_split_onto"
 		try_remove_previous "$arg_split_onto"
 	fi
