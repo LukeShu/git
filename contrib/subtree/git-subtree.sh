@@ -178,7 +178,8 @@ main () {
 			;;
 		--onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_onto="$1"
+			arg_split_onto=$(git rev-parse -q --verify "$1^{commit}") ||
+				die "'$1' does not refer to a commit"
 			shift
 			;;
 		--no-onto)
@@ -316,24 +317,46 @@ set_notree () {
 }
 
 # Usage: cache_set COMMIT SUBTREE_COMMIT
+cache_set_internal () {
+	assert test $# = 2
+	local key="$1"
+	local val="$2"
+	if test "$oldrev" != "latest_old" &&
+		test "$oldrev" != "latest_new" &&
+		test -e "$cachedir/$oldrev"
+	then
+		die "cache for $key already exists!"
+	fi
+	debug "caching commit:$key = subtree_commit:$val"
+	echo "$val" >"$cachedir/$key"
+}
+
+# Usage: cache_set COMMIT SUBTREE_COMMIT
 #
 # Store a COMMIT->SUBTREE_COMMIT mapping.  COMMIT may be:
 #  - a subtree commit (in which case the mapping is the identity)
 #  - a mainline commit
 #  - a squashed subtree commit
-# minline commit, or a subtree commit
+# mainline commit, or a subtree commit
 cache_set () {
 	assert test $# = 2
-	local oldrev="$1"
-	local newrev="$2"
-	if test "$oldrev" != "latest_old" &&
-		test "$oldrev" != "latest_new" &&
-		test -e "$cachedir/$oldrev"
+	local key="$1"
+	local val="$2"
+
+	if test -e "$key" != "$val"
 	then
-		die "cache for $oldrev already exists!"
+		cache_set_internal "$key" "$val"
+	else
+		# If we've stumbled on to a true subtree-commit, go
+		# ahead and mark its entire history as being able to
+		# be used verbatim.
+		local rev
+		git rev-list "$val" |
+		while read -r rev
+		do
+			cache_set_internal "$rev" "$rev"
+		done || exit $?
 	fi
-	debug "caching commit:$oldrev = subtree_commit:$newrev"
-	echo "$newrev" >"$cachedir/$oldrev"
 }
 
 # Usage: rev_exists REV
@@ -429,6 +452,12 @@ find_existing_splits () {
 	local rev="$2"
 	debug "Looking for prior splits..."
 	local indent=$(($indent + 1))
+
+	if test -n "$arg_split_onto"
+	then
+		cache_set "$arg_split_onto" "$arg_split_onto"
+		try_remove_previous "$arg_split_onto"
+	fi
 
 	local grep_format="^git-subtree-dir: $dir/*\$"
 	if test -n "$arg_split_ignore_joins"
@@ -913,20 +942,6 @@ cmd_split () {
 
 	debug "Splitting $dir..."
 	cache_setup || exit $?
-
-	if test -n "$arg_split_onto"
-	then
-		debug "Reading history for --onto=$arg_split_onto..."
-		local commit
-		git rev-list "$arg_split_onto" |
-		while read -r commit
-		do
-			# the 'onto' history is already just the subdir, so
-			# any parent we find there can be used verbatim
-			debug "cache: $commit"
-			cache_set "$commit" "$commit"
-		done || exit $?
-	fi
 
 	local unrevs
 	# shellcheck disable=SC2086
