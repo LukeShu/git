@@ -315,7 +315,13 @@ set_notree () {
 	echo "1" > "$cachedir/notree/$1"
 }
 
-# Usage: cache_set OLDREV NEWREV
+# Usage: cache_set COMMIT SUBTREE_COMMIT
+#
+# Store a COMMIT->SUBTREE_COMMIT mapping.  COMMIT may be:
+#  - a subtree commit (in which case the mapping is the identity)
+#  - a mainline commit
+#  - a squashed subtree commit
+# minline commit, or a subtree commit
 cache_set () {
 	assert test $# = 2
 	local oldrev="$1"
@@ -326,6 +332,7 @@ cache_set () {
 	then
 		die "cache for $oldrev already exists!"
 	fi
+	debug "caching commit:$oldrev = subtree_commit:$newrev"
 	echo "$newrev" >"$cachedir/$oldrev"
 }
 
@@ -353,11 +360,18 @@ try_remove_previous () {
 	fi
 }
 
-# Usage: find_latest_squash DIR
+# Usage: find_latest_squash DIR REVS...
+#
+# Print a pair "A B", where:
+# - A is the latest in-mainline-subtree-commit (either a real
+#   subtree-commit, or a squashed subtree-commit)
+# - B is the corresponding real subtree-commit (just A again, unless
+#   --squash)
 find_latest_squash () {
-	assert test $# = 1
-	debug "Looking for latest squash ($dir)..."
+	assert test $# -gt 1
 	local dir="$1"
+	shift
+	debug "Looking for latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
 	local sq=
@@ -365,7 +379,7 @@ find_latest_squash () {
 	local sub=
 	local a b junk
 	git log --grep="^git-subtree-dir: $dir/*\$" \
-		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' HEAD |
+		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$@" |
 	while read -r a b junk
 	do
 		debug "$a $b $junk"
@@ -384,8 +398,14 @@ find_latest_squash () {
 		END)
 			if test -n "$sub"
 			then
-				if test -n "$main"
+				if test -z "$main"
 				then
+					debug "  prior --squash: $sq"
+					debug "    git-subtree-split: '$sub'"
+				else
+					debug "  prior --rejoin: $sq"
+					debug "    git-subtree-mainline: '$main'"
+					debug "    git-subtree-split:    '$sub'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
 					sq="$sub"
@@ -420,7 +440,6 @@ find_existing_splits () {
 	local main=
 	local sub=
 	local a b junk
-	# shellcheck disable=SC2086
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$rev" |
 	while read -r a b junk
@@ -446,12 +465,22 @@ find_existing_splits () {
 			fi
 			if test -n "$main" -a -n "$sub"
 			then
-				debug "  Prior: $main -> $sub"
-				cache_set "$main" "$sub"
-				cache_set "$sub" "$sub"
-				try_remove_previous "$main"
-				try_remove_previous "$sub"
+				if test -z "$main"
+				then
+					debug "  prior --squash: $sq"
+					debug "    git-subtree-split: '$sub'"
+					cache_set "$sq" "$sub"
+				else
+					debug "  prior --rejoin: $sq"
+					debug "    git-subtree-mainline: '$main'"
+					debug "    git-subtree-split:    '$sub'"
+					cache_set "$main" "$sub"
+					cache_set "$sub" "$sub"
+					try_remove_previous "$main"
+					try_remove_previous "$sub"
+				fi
 			fi
+			sq=
 			main=
 			sub=
 			;;
@@ -933,8 +962,11 @@ cmd_split () {
 	then
 		debug "Merging split branch into HEAD..."
 		latest_old=$(cache_get latest_old) || exit $?
-		arg_addmerge_message="$(rejoin_msg "$dir" "$latest_old" "$latest_new")" || exit $?
-		if test -z "$(find_latest_squash "$dir")"; then
+		arg_addmerge_message="$(rejoin_msg "$dir" "$latest_old" "$latest_new")" || exit $? # XXX
+		local latest_squash
+		# shellcheck disable=SC2086
+		latest_squash=$(find_latest_squash "$dir" $rev) || exit $?
+		if test -z "$latest_squash"; then
 			cmd_add "$latest_new" || exit $?
 		else
 			cmd_merge "$latest_new" || exit $?
@@ -973,7 +1005,7 @@ cmd_merge () {
 	if test -n "$arg_addmerge_squash"
 	then
 		local first_split
-		first_split="$(find_latest_squash "$dir")" || exit $?
+		first_split="$(find_latest_squash "$dir" "$rev")" || exit $?
 		if test -z "$first_split"
 		then
 			die "Can't squash-merge: '$dir' was never added."

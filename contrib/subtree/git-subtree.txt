@@ -208,7 +208,7 @@ pushing upstream.  <branch> must not already exist.
 +
 If you use '--rejoin', git subtree attempts to optimize its history
 reconstruction to generate only the new commits since the last
-'--rejoin'.  '--ignore-join' disables this behaviour, forcing it to
+'--rejoin'.  '--ignore-join' disables this behavior, forcing it to
 regenerate the entire history.  In a large project, this can take a long
 time.
 
