@@ -17,15 +17,15 @@ h,help        show the help
 q             quiet
 d             show debug messages
 P,prefix=     the name of the subdir to split out
-m,message=    use the given message as the commit message for the merge commit
- options for 'split'
+ options for 'split' (also: 'push')
 annotate=     add a prefix to commit message of new commits
 b,branch=     create a new branch from the split subtree
 ignore-joins  ignore prior --rejoin commits
 onto=         try connecting new tree to an existing one
 rejoin        merge the new branch back into HEAD
- options for 'add', 'merge', and 'pull'
+ options for 'add' and 'merge' (also: 'pull', 'split --rejoin', and 'push --rejoin')
 squash        merge subtree changes as a single commit
+m,message=    use the given message as the commit message for the merge commit
 "
 
 PATH=$(git --exec-path):$PATH
@@ -786,6 +786,11 @@ cmd_split () {
 		die "You must provide exactly one revision.  Got: '$*'"
 	fi
 
+	if test -n "$arg_split_rejoin"
+	then
+		ensure_clean
+	fi
+
 	debug "Splitting $dir..."
 	cache_setup || exit $?
 
@@ -828,10 +833,12 @@ cmd_split () {
 	then
 		debug "Merging split branch into HEAD..."
 		latest_old=$(cache_get latest_old) || exit $?
-		git merge -s ours \
-			--allow-unrelated-histories \
-			-m "$(rejoin_msg "$dir" "$latest_old" "$latest_new")" \
-			"$latest_new" >&2 || exit $?
+		arg_addmerge_message="$(rejoin_msg "$dir" "$latest_old" "$latest_new")" || exit $?
+		if test -z "$(find_latest_squash "$dir")"; then
+			cmd_add "$latest_new" || exit $?
+		else
+			cmd_merge "$latest_new" || exit $?
+		fi
 	fi
 	if test -n "$arg_split_branch"
 	then

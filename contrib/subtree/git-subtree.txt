@@ -9,12 +9,12 @@ git-subtree - Merge subtrees together and split repository into subtrees
 SYNOPSIS
 --------
 [verse]
-'git subtree' add   -P <prefix> <commit>
-'git subtree' add   -P <prefix> <repository> <ref>
-'git subtree' pull  -P <prefix> <repository> <ref>
-'git subtree' push  -P <prefix> <repository> <refspec>
-'git subtree' merge -P <prefix> <commit>
-'git subtree' split -P <prefix> [OPTIONS] [<commit>]
+'git subtree' add   [OPTIONS] -P <prefix> <commit>
+'git subtree' add   [OPTIONS] -P <prefix> <repository> <ref>
+'git subtree' pull  [OPTIONS] -P <prefix> <repository> <ref>
+'git subtree' push  [OPTIONS] -P <prefix> <repository> <refspec>
+'git subtree' merge [OPTIONS] -P <prefix> <commit>
+'git subtree' split [OPTIONS] -P <prefix> [<commit>...]
 
 
 DESCRIPTION
@@ -116,9 +116,6 @@ identical (i.e. to produce the same commit ids).  Because of this, if
 you add new commits and then re-split, the new commits will be attached
 as commits on top of the history you generated last time, so 'git merge'
 and friends will work as expected.
-+
-Note that if you use '--squash' when you merge, you should usually not
-just '--rejoin' when you split.
 
 
 OPTIONS
@@ -137,14 +134,13 @@ OPTIONS
 	want to manipulate.  This option is mandatory
 	for all commands.
 
--m <message>::
---message=<message>::
-	This option is only valid for add, merge and pull (unsure).
-	Specify <message> as the commit message for the merge commit.
 
+OPTIONS FOR add AND merge (ALSO: pull, split --rejoin, AND push --rejoin)
+-------------------------------------------------------------------------
+These options for 'add' and 'merge' may also be given to 'pull' (which
+wraps 'merge'), as well as 'split --rejoin' and 'push --rejoin' (which
+wrap either 'add' or 'merge' as appropriate).
 
-OPTIONS FOR add, merge, push, pull
-----------------------------------
 --squash::
 	This option is only valid for add, merge, and pull
 	commands.
@@ -174,9 +170,17 @@ Whether or not you use '--squash', changes made in your local repository
 remain intact and can be later split and send upstream to the
 subproject.
 
+-m <message>::
+--message=<message>::
+	This option is only valid for add, merge and pull (unsure).
+	Specify <message> as the commit message for the merge commit.
 
-OPTIONS FOR split
------------------
+
+OPTIONS FOR split (ALSO: push)
+------------------------------
+These options for 'split' may also be given to 'push' (which wraps
+'split').
+
 --annotate=<annotation>::
 	This option is only valid for the split command.
 +
@@ -235,9 +239,8 @@ Unfortunately, using this option results in 'git log' showing an extra
 copy of every new commit that was created (the original, and the
 synthetic one).
 +
-If you do all your merges with '--squash', don't use '--rejoin' when you
-split, because you don't want the subproject's history to be part of
-your project anyway.
+If you do all your merges with '--squash', make sure you also use
+'--squash' when you 'split --rejoin'.
 
 
 EXAMPLE 1. Add command
