@@ -321,11 +321,11 @@ cache_set_internal () {
 	assert test $# = 2
 	local key="$1"
 	local val="$2"
-	if test "$oldrev" != "latest_old" &&
-		test "$oldrev" != "latest_new" &&
-		test -e "$cachedir/$oldrev"
+	if test "$key" != "latest_old" &&
+		test "$key" != "latest_new" &&
+		test -e "$cachedir/$key"
 	then
-		die "cache for $key already exists!"
+		die "$cachedir cache for $key already exists!"
 	fi
 	debug "caching commit:$key = subtree_commit:$val"
 	echo "$val" >"$cachedir/$key"
@@ -343,7 +343,7 @@ cache_set () {
 	local key="$1"
 	local val="$2"
 
-	if test -e "$key" != "$val"
+	if test "$key" != "$val"
 	then
 		cache_set_internal "$key" "$val"
 	else
@@ -946,8 +946,8 @@ cmd_split () {
 	local unrevs
 	# shellcheck disable=SC2086
 	unrevs="$(find_existing_splits "$dir" "$rev")" || exit $?
-	# shellcheck disable=SC2086
 	debug
+	# shellcheck disable=SC2086
 	debug unrevs: {$unrevs}
 	debug
 
