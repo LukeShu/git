@@ -476,12 +476,12 @@ find_latest_squash () {
 			then
 				if test -z "$main"
 				then
-					debug "  prior --squash: $sq"
-					debug "    git-subtree-split: '$sub'"
+					debug "prior --squash: $sq"
+					debug "  git-subtree-split: '$sub'"
 				else
-					debug "  prior --rejoin: $sq"
-					debug "    git-subtree-mainline: '$main'"
-					debug "    git-subtree-split:    '$sub'"
+					debug "prior --rejoin: $sq"
+					debug "  git-subtree-mainline: '$main'"
+					debug "  git-subtree-split:    '$sub'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
 					sq=$(git rev-parse --verify "$sq^2") ||
@@ -508,7 +508,7 @@ find_existing_splits () {
 
 	if test -n "$arg_split_onto"
 	then
-		debug "  cli --onto: $arg_split_onto"
+		debug "cli --onto: $arg_split_onto"
 		cache_set "$arg_split_onto" "$arg_split_onto"
 		try_remove_previous "$arg_split_onto"
 	fi
@@ -543,13 +543,13 @@ find_existing_splits () {
 			then
 				if test -z "$main"
 				then
-					debug "  prior --squash: $sq"
-					debug "    git-subtree-split: '$sub'"
+					debug "prior --squash: $sq"
+					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "  prior --rejoin: $sq"
-					debug "    git-subtree-mainline: '$main'"
-					debug "    git-subtree-split:    '$sub'"
+					debug "prior --rejoin: $sq"
+					debug "  git-subtree-mainline: '$main'"
+					debug "  git-subtree-split:    '$sub'"
 					cache_set "$main" "$sub"
 					cache_set "$sub" "$sub"
 					try_remove_previous "$main"
