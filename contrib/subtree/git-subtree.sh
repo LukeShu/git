@@ -396,11 +396,9 @@ try_remove_previous () {
 	fi
 }
 
-# Usage: find_latest_squash
-#
-# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
+# Usage: find_latest_squash REVS...
 find_latest_squash () {
-	assert test $# = 0
+	assert test $# -gt 0
 	debug "Looking for latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
@@ -409,7 +407,7 @@ find_latest_squash () {
 	local sub=
 	local a b junk
 	git log --grep="^git-subtree-dir: $dir/*\$" \
-		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' HEAD |
+		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$@" |
 	while read -r a b junk
 	do
 		debug "$a $b $junk"
@@ -994,7 +992,9 @@ cmd_split () {
 		local latest_old
 		latest_old=$(cache_get latest_old) || exit $?
 		arg_addmerge_message="$(rejoin_msg "$latest_old" "$latest_new")" || exit $?
-		if test -z "$(find_latest_squash)"
+		local latest_squash
+		latest_squash=$(find_latest_squash "$rev") || exit $?
+		if test -z "$latest_squash"
 		then
 			cmd_add "$latest_new" >&2 || exit $?
 		else
@@ -1034,7 +1034,7 @@ cmd_merge () {
 	if test -n "$arg_addmerge_squash"
 	then
 		local first_split
-		first_split="$(find_latest_squash)" || exit $?
+		first_split="$(find_latest_squash HEAD)" || exit $?
 		if test -z "$first_split"
 		then
 			die "Can't squash-merge: '$dir' was never added."
