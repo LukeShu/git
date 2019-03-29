@@ -244,6 +244,7 @@ main () {
 
 	readonly dir="$(dirname "$arg_prefix/.")"
 
+	indent=0
 	debug "command: {$arg_command}"
 	debug "quiet: {$GIT_QUIET}"
 	debug "dir: {$dir}"
@@ -432,12 +433,12 @@ find_latest_squash () {
 			then
 				if test -z "$main"
 				then
-					debug "  prior --squash: $sq"
-					debug "    git-subtree-split: '$sub'"
+					debug "prior --squash: $sq"
+					debug "  git-subtree-split: '$sub'"
 				else
-					debug "  prior --rejoin: $sq"
-					debug "    git-subtree-mainline: '$main'"
-					debug "    git-subtree-split:    '$sub'"
+					debug "prior --rejoin: $sq"
+					debug "  git-subtree-mainline: '$main'"
+					debug "  git-subtree-split:    '$sub'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
 					sq="$sub"
@@ -464,7 +465,7 @@ find_existing_splits () {
 
 	if test -n "$arg_split_onto"
 	then
-		debug "  cli --onto: $arg_split_onto"
+		debug "cli --onto: $arg_split_onto"
 		cache_set "$arg_split_onto" "$arg_split_onto"
 		try_remove_previous "$arg_split_onto"
 	fi
@@ -506,13 +507,13 @@ find_existing_splits () {
 			then
 				if test -z "$main"
 				then
-					debug "  prior --squash: $sq"
-					debug "    git-subtree-split: '$sub'"
+					debug "prior --squash: $sq"
+					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "  prior --rejoin: $sq"
-					debug "    git-subtree-mainline: '$main'"
-					debug "    git-subtree-split:    '$sub'"
+					debug "prior --rejoin: $sq"
+					debug "  git-subtree-mainline: '$main'"
+					debug "  git-subtree-split:    '$sub'"
 					cache_set "$main" "$sub"
 					cache_set "$sub" "$sub"
 					try_remove_previous "$main"
@@ -644,10 +645,11 @@ toptree_for_commit () {
 	git rev-parse --verify "$commit^{tree}" || exit $?
 }
 
-# Usage: subtree_for_commit COMMIT
+# Usage: subtree_for_commit DIR COMMIT
 subtree_for_commit () {
-	assert test $# = 1
-	local commit="$1"
+	assert test $# = 2
+	local dir="$1"
+	local commit="$2"
 	local mode type tree name
 	git ls-tree "$commit" -- "$dir" |
 	while read -r mode type tree name
@@ -829,12 +831,13 @@ process_split_commit () {
 	fi
 	createcount=$(($createcount + 1))
 	debug "parents: $parents"
-	check_parents "$parents"
+	# shellcheck disable=SC2086
+	ensure_parents $parents
 	# shellcheck disable=SC2086
 	newparents=$(cache_get $parents) || exit $?
 	debug "newparents: $newparents"
 
-	tree=$(subtree_for_commit "$rev") || exit $?
+	tree=$(subtree_for_commit "$dir" "$rev") || exit $?
 	debug "tree is: $tree"
 
 	# ugly.  is there no better way to tell if this is a subtree
