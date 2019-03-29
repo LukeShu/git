@@ -809,17 +809,16 @@ process_split_commit () {
 	local rev="$1"
 	local parents="$2"
 
-	if test "$indent" -eq 0
+	if test "$indent" -gt 0
 	then
-		revcount=$(($revcount + 1))
-	else
 		# processing commit without normal parent information;
 		# fetch from repo
 		parents=$(git rev-parse "$rev^@")
 		extracount=$(($extracount + 1))
 	fi
+	revcount=$(($revcount + 1))
 
-	progress "rev:$revcount/$revmax (created:$createcount) [extra:$extracount]"
+	progress "rev:$revcount/($revmax+$extracount) (created:$createcount)"
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
