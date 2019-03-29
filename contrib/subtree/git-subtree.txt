@@ -232,6 +232,58 @@ If you do all your merges with '--squash', make sure you also use
 '--squash' when you 'split --rejoin'.
 
 
+READING split PROGRESS OUTPUT
+-----------------------------
+
+When running 'git subtree split' without '-q', it will keep you
+informed of its progress by writing a line that looks like:
+
+	progress: rev:12/(390+2) (created:12)
+
+Going in to the operation, it knows that it as to map at least a
+certain number of commit revisions in the parent project to commits
+revisions in the child project.  This is what the 'rev:' portion
+indicates.  The number in the denominator is shown as a sum; the first
+number is the number of commits that it knows ahead of time that it
+will have to map, the second number is the number of commits that it
+didn't expect to have to map.
+
+If the branch being split merged a feature branch that had been based
+off of a commit that is more than 1 commit prior to the most recent
+join, then 'git subtree split' will have figure out more mappings than
+originally anticipated.  For example, in the following commit history
+('--rejoin' commits are indicated with numbers instead of letters)
+
+	                          X---Y---.     // feature branch
+	                         /         \
+	A---B---C---1---D---E---F---2---G---H   // main branch
+	           /               /
+	 A'--B'--C'------D'--E'--F'             // split branch
+
+the initial count will figure that it has to find mappings for X, Y,
+G, and H; so starting out it would say
+
+	progress: rev:0/(4+0) (created:0)
+
+However, because X and Y don't have the most recent join (2) as an
+ancestor, 'git subtree split' will also have to figure out the
+mappings for D and E (F being the commit right before a join, already
+has its mapping known).  So by the end, it will say
+
+
+	progress: rev:6/(4+2) (created: 6)
+
+Some of the commits it maps will map to an existing commit that is in
+both the history of the parent project and the child project (this
+should not happen if using '--squash'); some of them will not, and
+will cause a new commit to be created.  The number of new commits
+created is what the 'created:' portion indicates.  It may turn out
+that this new "created" commit actually already exists in the history
+of the child project, but 'git subtree split' didn't know that ahead
+of time; the counter is still incremented because it had to do the
+work of creating the commit, even though it already existed.
+
+
 EXAMPLE 1. 'add' command
 ------------------------
 Let's assume that you have a local repository that you would like
