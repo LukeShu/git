@@ -32,6 +32,15 @@ then
 	exit 126
 fi
 
+# Globals:
+#  - arguments:
+#    + arg_FLAG (readonly except for arg_addmerge_message)
+#    + arg_command (readonly)
+#    + dir (readonly)
+#  - misc:
+#    + cachedir (readonly)
+#    + indent (mutable, kinda)
+
 OPTS_SPEC="\
 git subtree add   --prefix=<prefix> <commit>
 git subtree add   --prefix=<prefix> <repository> <ref>
@@ -118,8 +127,8 @@ main () {
 	# that we can provide more helpful validation when we do the
 	# "real" flag parsing.
 	arg_split_rejoin=
-	allow_split=
-	allow_addmerge=
+	local allow_split=
+	local allow_addmerge=
 	while test $# -gt 0
 	do
 		opt="$1"
@@ -152,6 +161,10 @@ main () {
 		die "Unknown command '$arg_command'"
 		;;
 	esac
+	readonly arg_command
+	readonly allow_split
+	readonly allow_addmerge
+	readonly arg_split_rejoin
 	# Reset the arguments array for "real" flag parsing.
 	eval "$set_args"
 
@@ -241,6 +254,14 @@ main () {
 			;;
 		esac
 	done
+	readonly arg_debug
+	readonly arg_split_branch
+	readonly arg_split_onto
+	readonly arg_split_ignore_joins
+	readonly arg_split_annotate
+	readonly arg_addmerge_squash
+	#readonly arg_addmerge_message # we might adjust this if --rejoin
+	readonly arg_prefix
 	shift
 
 	if test -z "$arg_prefix"
@@ -260,6 +281,7 @@ main () {
 	esac
 
 	dir="$(dirname "$arg_prefix/.")"
+	readonly dir
 
 	debug "command: {$arg_command}"
 	debug "quiet: {$GIT_QUIET}"
@@ -275,7 +297,8 @@ main () {
 # shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 cache_setup () {
 	assert test $# = 0
-	cachedir="$GIT_DIR/subtree-cache/$$"
+	cachedir="$GIT_DIR/subtree-cache/$$" # global
+	readonly cachedir
 	rm -rf "$cachedir" ||
 		die "Can't delete old cachedir: $cachedir"
 	mkdir -p "$cachedir" ||
@@ -287,6 +310,7 @@ cache_setup () {
 
 # Usage: cache_get [REVS...]
 cache_get () {
+	local oldrev
 	for oldrev in "$@"
 	do
 		if test -r "$cachedir/$oldrev"
@@ -298,6 +322,7 @@ cache_get () {
 
 # Usage: cache_miss [REVS...]
 cache_miss () {
+	local oldrev
 	for oldrev in "$@"
 	do
 		if ! test -r "$cachedir/$oldrev"
@@ -310,8 +335,11 @@ cache_miss () {
 # Usage: check_parents PARENTS_EXPR
 check_parents () {
 	assert test $# = 1
+	local missed
 	missed=$(cache_miss "$1") || exit $?
 	local indent=$(($indent + 1))
+
+	local miss
 	for miss in $missed
 	do
 		if ! test -r "$cachedir/notree/$miss"
@@ -331,8 +359,8 @@ set_notree () {
 # Usage: cache_set OLDREV NEWREV
 cache_set () {
 	assert test $# = 2
-	oldrev="$1"
-	newrev="$2"
+	local oldrev="$1"
+	local newrev="$2"
 	if test "$oldrev" != "latest_old" &&
 		test "$oldrev" != "latest_new" &&
 		test -e "$cachedir/$oldrev"
@@ -366,16 +394,18 @@ try_remove_previous () {
 	fi
 }
 
-# Usage: find_latest_squash DIR
+# Usage: find_latest_squash
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 find_latest_squash () {
-	assert test $# = 1
+	assert test $# = 0
 	debug "Looking for latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
-	dir="$1"
-	sq=
-	main=
-	sub=
+	local sq=
+	local main=
+	local sub=
+	local a b junk
 	git log --grep="^git-subtree-dir: $dir/*\$" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' HEAD |
 	while read -r a b junk
@@ -415,21 +445,23 @@ find_latest_squash () {
 	done || exit $?
 }
 
-# Usage: find_existing_splits DIR REV
+# Usage: find_existing_splits REV
 find_existing_splits () {
-	assert test $# = 2
+	assert test $# = 1
+	local rev="$1"
 	debug "Looking for prior splits..."
 	local indent=$(($indent + 1))
 
-	dir="$1"
-	rev="$2"
-	main=
-	sub=
 	local grep_format="^git-subtree-dir: $dir/*\$"
 	if test -n "$arg_split_ignore_joins"
 	then
 		grep_format="^Add '$dir/' from commit '"
 	fi
+
+	local sq=
+	local main=
+	local sub=
+	local a b junk
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$rev" |
 	while read -r a b junk
@@ -498,12 +530,13 @@ copy_commit () {
 	) || die "Can't copy commit $1"
 }
 
-# Usage: add_msg DIR LATEST_OLD LATEST_NEW
+# Usage: add_msg LATEST_OLD LATEST_NEW
 add_msg () {
-	assert test $# = 3
-	dir="$1"
-	latest_old="$2"
-	latest_new="$3"
+	assert test $# = 2
+	local latest_old="$1"
+	local latest_new="$2"
+
+	local commit_message
 	if test -n "$arg_addmerge_message"
 	then
 		commit_message="$arg_addmerge_message"
@@ -537,12 +570,13 @@ add_squashed_msg () {
 	fi
 }
 
-# Usage: rejoin_msg DIR LATEST_OLD LATEST_NEW
+# Usage: rejoin_msg LATEST_OLD LATEST_NEW
 rejoin_msg () {
-	assert test $# = 3
-	dir="$1"
-	latest_old="$2"
-	latest_new="$3"
+	assert test $# = 2
+	local latest_old="$1"
+	local latest_new="$2"
+
+	local commit_message
 	if test -n "$arg_addmerge_message"
 	then
 		commit_message="$arg_addmerge_message"
@@ -558,12 +592,13 @@ rejoin_msg () {
 	EOF
 }
 
-# Usage: squash_msg DIR OLD_SUBTREE_COMMIT NEW_SUBTREE_COMMIT
+# Usage: squash_msg OLD_SUBTREE_COMMIT NEW_SUBTREE_COMMIT
 squash_msg () {
-	assert test $# = 3
-	dir="$1"
-	oldsub="$2"
-	newsub="$3"
+	assert test $# = 2
+	local oldsub="$1"
+	local newsub="$2"
+
+	local oldsub_short newsub_short
 	newsub_short=$(git rev-parse --short "$newsub")
 
 	if test -n "$oldsub"
@@ -585,15 +620,15 @@ squash_msg () {
 # Usage: toptree_for_commit COMMIT
 toptree_for_commit () {
 	assert test $# = 1
-	commit="$1"
+	local commit="$1"
 	git rev-parse --verify "$commit^{tree}" || exit $?
 }
 
-# Usage: subtree_for_commit COMMIT DIR
+# Usage: subtree_for_commit COMMIT
 subtree_for_commit () {
-	assert test $# = 2
-	commit="$1"
-	dir="$2"
+	assert test $# = 1
+	local commit="$1"
+	local mode type tree name
 	# shellcheck disable=SC2034 # we don't use the 'mode' field
 	git ls-tree "$commit" -- "$dir" |
 	while read -r mode type tree name
@@ -609,12 +644,13 @@ subtree_for_commit () {
 # Usage: tree_changed TREE [PARENTS...]
 tree_changed () {
 	assert test $# -gt 0
-	tree=$1
+	local tree=$1
 	shift
 	if test $# -ne 1
 	then
 		return 0   # weird parents, consider it changed
 	else
+		local ptree
 		ptree=$(toptree_for_commit "$1") || exit $?
 		if test "$ptree" != "$tree"
 		then
@@ -628,16 +664,18 @@ tree_changed () {
 # Usage: new_squash_commit OLD_SQUASHED_COMMIT OLD_NONSQUASHED_COMMIT NEW_NONSQUASHED_COMMIT
 new_squash_commit () {
 	assert test $# = 3
-	old="$1"
-	oldsub="$2"
-	newsub="$3"
+	local old="$1"
+	local oldsub="$2"
+	local newsub="$3"
+
+	local tree
 	tree=$(toptree_for_commit "$newsub") || exit $?
 	if test -n "$old"
 	then
-		squash_msg "$dir" "$oldsub" "$newsub" |
+		squash_msg "$oldsub" "$newsub" |
 		git commit-tree "$tree" -p "$old" || exit $?
 	else
-		squash_msg "$dir" "" "$newsub" |
+		squash_msg "" "$newsub" |
 		git commit-tree "$tree" || exit $?
 	fi
 }
@@ -645,16 +683,18 @@ new_squash_commit () {
 # Usage: copy_or_skip REV TREE NEWPARENTS
 copy_or_skip () {
 	assert test $# = 3
-	rev="$1"
-	tree="$2"
-	newparents="$3"
+	local rev="$1"
+	local tree="$2"
+	local newparents="$3"
 	assert test -n "$tree"
 
-	identical=
-	nonidentical=
-	p=
-	gotparents=
-	copycommit=
+	local identical=
+	local nonidentical=
+	local p=
+	local gotparents=
+	local copycommit=
+	local parent ptree
+	# shellcheck disable=SC2086 # $newparents is intentionally unquoted
 	for parent in $newparents
 	do
 		ptree=$(toptree_for_commit "$parent") || exit $?
@@ -666,6 +706,7 @@ copy_or_skip () {
 			then
 				# if a previous identical parent was found, check whether
 				# one is already an ancestor of the other
+				local mergebase
 				mergebase=$(git merge-base "$identical" "$parent")
 				if test "$identical" = "$mergebase"
 				then
@@ -686,7 +727,8 @@ copy_or_skip () {
 
 		# sometimes both old parents map to the same newparent;
 		# eliminate duplicates
-		is_new=1
+		local is_new=1
+		local gp
 		for gp in $gotparents
 		do
 			if test "$gp" = "$parent"
@@ -704,6 +746,7 @@ copy_or_skip () {
 
 	if test -n "$identical" && test -n "$nonidentical"
 	then
+		local extras
 		extras=$(git rev-list --count "$identical..$nonidentical")
 		if test "$extras" -ne 0
 		then
@@ -747,17 +790,17 @@ process_split_commit () {
 	local rev="$1"
 	local parents="$2"
 
-	if test $indent -eq 0
+	if test "$indent" -eq 0
 	then
-		revcount=$(($revcount + 1))
+		revcount=$(($revcount + 1)) # in parent scope
 	else
 		# processing commit without normal parent information;
 		# fetch from repo
 		parents=$(git rev-parse "$rev^@")
-		extracount=$(($extracount + 1))
+		extracount=$(($extracount + 1)) # in parent scope
 	fi
 
-	progress "$revcount/$revmax ($createcount) [$extracount]"
+	progress "rev:$revcount/$revmax (created:$createcount) [extra:$extracount]"
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
@@ -767,14 +810,14 @@ process_split_commit () {
 		debug "prior: $exists"
 		return
 	fi
-	createcount=$(($createcount + 1))
+	createcount=$(($createcount + 1)) # in parent scope
 	debug "parents: $parents"
 	check_parents "$parents"
 	# shellcheck disable=SC2086 # $parents is intentionally unquoted
 	newparents=$(cache_get $parents) || exit $?
 	debug "newparents: $newparents"
 
-	tree=$(subtree_for_commit "$rev" "$dir") || exit $?
+	tree=$(subtree_for_commit "$rev") || exit $?
 	debug "tree is: $tree"
 
 	# ugly.  is there no better way to tell if this is a subtree
@@ -829,8 +872,6 @@ cmd_add () {
 cmd_add_repository () {
 	assert test $# = 2
 	echo "git fetch" "$@"
-	repository=$1
-	refspec=$2
 	git fetch "$@" || exit $?
 	cmd_add_commit FETCH_HEAD
 }
@@ -840,6 +881,7 @@ cmd_add_commit () {
 	# The rev has already been validated by cmd_add(), we just
 	# need to normalize it.
 	assert test $# = 1
+	local rev
 	rev=$(git rev-parse --verify "$1^{commit}") || exit $?
 
 	debug "Adding $dir as '$rev'..."
@@ -869,7 +911,7 @@ cmd_add_commit () {
 	else
 		revp=$(peel_committish "$rev") || exit $?
 		# shellcheck disable=SC2086 # $headp is intentionally unquoted
-		commit=$(add_msg "$dir" "$headrev" "$rev" |
+		commit=$(add_msg "$headrev" "$rev" |
 			git commit-tree "$tree" $headp -p "$revp") || exit $?
 	fi
 	git reset "$commit" || exit $?
@@ -879,6 +921,7 @@ cmd_add_commit () {
 
 # Usage: cmd_split [REV]
 cmd_split () {
+	local rev
 	if test $# -eq 0
 	then
 		rev=$(git rev-parse HEAD)
@@ -901,6 +944,7 @@ cmd_split () {
 	if test -n "$arg_split_onto"
 	then
 		debug "Reading history for --onto=$arg_split_onto..."
+		local commit
 		git rev-list "$arg_split_onto" |
 		while read -r commit
 		do
@@ -911,24 +955,31 @@ cmd_split () {
 		done || exit $?
 	fi
 
-	unrevs="$(find_existing_splits "$dir" "$rev")" || exit $?
+	local unrevs
+	unrevs="$(find_existing_splits "$rev")" || exit $?
+	debug
+	debug "unrevs: {$unrevs}"
+	debug
 
 	# We can't restrict rev-list to only $dir here, because some of our
 	# parents have the $dir contents the root, and those won't match.
 	# (and rev-list --follow doesn't seem to solve this)
-	#
+	local revmax
 	# shellcheck disable=SC2086 # $unrevs is intentionally unquoted
-	revmax=$(git rev-list --topo-order --reverse --parents "$rev" $unrevs | wc -l)
-	revcount=0
-	createcount=0
-	extracount=0
+	revmax=$(git rev-list --topo-order --reverse --parents "$rev" $unrevs | wc -l) # global
+	readonly revmax
+	local revcount=0
+	local createcount=0
+	local extracount=0
+	local lrev lparents
 	# shellcheck disable=SC2086 # $unrevs is intentionally unquoted
 	git rev-list --topo-order --reverse --parents "$rev" $unrevs |
-	while read -r rev parents
+	while read -r lrev lparents
 	do
-		process_split_commit "$rev" "$parents"
+		process_split_commit "$lrev" "$lparents"
 	done || exit $?
 
+	local latest_new
 	latest_new=$(cache_get latest_new) || exit $?
 	if test -z "$latest_new"
 	then
@@ -938,9 +989,10 @@ cmd_split () {
 	if test -n "$arg_split_rejoin"
 	then
 		debug "Merging split branch into HEAD..."
+		local latest_old
 		latest_old=$(cache_get latest_old) || exit $?
-		arg_addmerge_message="$(rejoin_msg "$dir" "$latest_old" "$latest_new")" || exit $?
-		if test -z "$(find_latest_squash "$dir")"
+		arg_addmerge_message="$(rejoin_msg "$latest_old" "$latest_new")" || exit $?
+		if test -z "$(find_latest_squash)"
 		then
 			cmd_add "$latest_new" >&2 || exit $?
 		else
@@ -949,6 +1001,7 @@ cmd_split () {
 	fi
 	if test -n "$arg_split_branch"
 	then
+		local action
 		if rev_exists "refs/heads/$arg_split_branch"
 		then
 			if ! git merge-base --is-ancestor "$arg_split_branch" "$latest_new"
@@ -971,26 +1024,30 @@ cmd_split () {
 cmd_merge () {
 	test $# -eq 1 ||
 		die "You must provide exactly one revision.  Got: '$*'"
+	local rev
 	rev=$(git rev-parse -q --verify "$1^{commit}") ||
 		die "'$1' does not refer to a commit"
 	ensure_clean
 
 	if test -n "$arg_addmerge_squash"
 	then
-		first_split="$(find_latest_squash "$dir")" || exit $?
+		local first_split
+		first_split="$(find_latest_squash)" || exit $?
 		if test -z "$first_split"
 		then
 			die "Can't squash-merge: '$dir' was never added."
 		fi
 		# shellcheck disable=SC2086 # $first_split is intentionally unquoted
 		set -- $first_split
-		old=$1
-		sub=$2
+		assert test $# = 2
+		local old=$1
+		local sub=$2
 		if test "$sub" = "$rev"
 		then
 			say >&2 "Subtree is already at commit $rev."
 			exit 0
 		fi
+		local new
 		new=$(new_squash_commit "$old" "$sub" "$rev") || exit $?
 		debug "New squash commit: $new"
 		rev="$new"
@@ -1025,9 +1082,10 @@ cmd_push () {
 	fi
 	if test -e "$dir"
 	then
-		repository=$1
-		refspec=${2#+}
-		remoteref=${refspec#*:}
+		local repository=$1
+		local refspec=${2#+}
+		local remoteref=${refspec#*:}
+		local localrevname_presplit
 		if test "$remoteref" = "$refspec"
 		then
 			localrevname_presplit=HEAD
@@ -1035,10 +1093,12 @@ cmd_push () {
 			localrevname_presplit=${refspec%%:*}
 		fi
 		ensure_valid_ref_format "$remoteref"
+		local localrev_presplit
 		localrev_presplit=$(git rev-parse -q --verify "$localrevname_presplit^{commit}") ||
 			die "'$localrevname_presplit' does not refer to a commit"
 
 		echo "git push using: " "$repository" "$refspec"
+		local localrev
 		localrev=$(cmd_split "$localrev_presplit") || die
 		git push "$repository" "$localrev:refs/heads/$remoteref"
 	else
