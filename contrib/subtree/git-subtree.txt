@@ -170,6 +170,9 @@ some changes that were added earlier.
 Whether or not you use '--squash', changes made in your local repository
 remain intact and can be later split and send upstream to the
 subproject.
++
+If you use '--squash', then 'git subtree split --ignore-joins' will
+not work properly.
 
 -m <message>::
 --message=<message>::
@@ -203,7 +206,11 @@ but it may not always be effective.
 	reconstruction to generate only the new commits since the last
 	'--rejoin'.  '--ignore-joins' disables this behavior, forcing it to
 	regenerate the entire history.  In a large project, this can take a long
-	time.
+	time.  'git subtree split --ignore-joins' will not work properly with
+	subtrees that have been merged with '--squash'.  If the initial 'git
+	subtree add' had a custom '--message' passed to it, you will need to
+	also pass '--onto' in order for 'git subtree split --ignore-joins' to
+	work properly.
 
 --onto=<onto>::
 	If your subtree was originally imported using something other than git

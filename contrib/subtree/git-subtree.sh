@@ -300,6 +300,10 @@ main () {
 # shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 cache_setup () {
 	assert test $# = 0
+	if test "${cachedir:-}" = "$GIT_DIR/subtree-cache/$$"
+	then
+		return
+	fi
 	cachedir="$GIT_DIR/subtree-cache/$$" # global
 	readonly cachedir
 	rm -rf "$cachedir" ||
@@ -308,11 +312,14 @@ cache_setup () {
 		die "Can't create new cachedir: $cachedir"
 	mkdir -p "$cachedir/notree" ||
 		die "Can't create new cachedir: $cachedir/notree"
+	true > "$cachedir/subtree" ||
+		die "Can't create new cachedir: $cachedir/subtree"
 	debug "Using cachedir: $cachedir" >&2
 }
 
 # Usage: cache_get [REVS...]
 cache_get () {
+	assert test -n "$cachedir"
 	local oldrev
 	for oldrev in "$@"
 	do
@@ -323,34 +330,24 @@ cache_get () {
 	done
 }
 
-# Usage: cache_miss [REVS...]
+# Usage: ensure_parents [PARENTS...]
 #
-# Print the subset of REVS that are not yet cached.
-cache_miss () {
-	local oldrev
-	for oldrev in "$@"
-	do
-		if ! test -r "$cachedir/$oldrev"
-		then
-			echo "$oldrev"
-		fi
-	done
-}
-
-# Usage: check_parents PARENTS_EXPR
-check_parents () {
-	assert test $# = 1
-	local missed
-	missed=$(cache_miss "$1") || exit $?
+# Ensure that each commit in the list of 0 or more PARENTS is
+# accounted for in the cache.
+ensure_parents () {
 	local indent=$(($indent + 1))
 
-	local miss
-	for miss in $missed
+	# The list of parents must either (1) already have a cached
+	# mapping, or (2) be cached as not containing the subtree
+	# (i.e. the cache says "no mapping is possible").
+	local parent
+	for parent in "$@"
 	do
-		if ! test -r "$cachedir/notree/$miss"
+		if ! test -r "$cachedir/$parent" && ! test -r "$cachedir/notree/$parent"
 		then
-			debug "incorrect order: $miss"
-			process_split_commit "$miss" ""
+			# Die.
+			debug "Unexpected non-cached parent: $parent"
+			process_split_commit "$parent" ""
 		fi
 	done
 }
@@ -358,6 +355,7 @@ check_parents () {
 # Usage: set_notree REV
 set_notree () {
 	assert test $# = 1
+	assert test -n "$cachedir"
 	echo "1" > "$cachedir/notree/$1"
 }
 
@@ -366,23 +364,30 @@ set_notree () {
 # See cache_set.
 cache_set_internal () {
 	assert test $# = 2
+	assert test -n "$cachedir"
 	local key="$1"
 	local val="$2"
-	if test "$key" != "latest_old" &&
-		test "$key" != "latest_new" &&
-		test -e "$cachedir/$key"
-	then
-		local oldval
-		oldval=$(cat "$cachedir/$key")
-		if test "$oldval" = "$val"
-		then
-			debug "already cached: commit:$key = subtree_commit:$val"
-			return
-		else
-			die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
-		fi
-	fi
 	debug "caching commit:$key = subtree_commit:$val"
+	case "$key" in
+	latest_old|latest_new)
+		:
+		;;
+	*)
+		if test -e "$cachedir/$key"
+		then
+			local oldval
+			oldval=$(cat "$cachedir/$key")
+			if test "$oldval" = "$val"
+			then
+				debug "already cached: commit:$key = subtree_commit:$val"
+				return
+			else
+				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
+			fi
+		fi
+		echo "$val" >>"$cachedir/subtree"
+		;;
+	esac
 	echo "$val" >"$cachedir/$key"
 }
 
@@ -405,6 +410,7 @@ cache_set () {
 		# If we've stumbled on to a true subtree-commit, go
 		# ahead and mark its entire history as being able to
 		# be used verbatim.
+		local indent=$(($indent + 1))
 		local rev
 		git rev-list "$val" |
 		while read -r rev
@@ -594,11 +600,15 @@ copy_commit () {
 	) || die "Can't copy commit $1"
 }
 
-# Usage: add_msg LATEST_OLD LATEST_NEW
+# Usage: add_msg
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 add_msg () {
-	assert test $# = 2
-	local latest_old="$1"
-	local latest_new="$2"
+	assert test $# = 0
+
+	local latest_old latest_new
+	latest_old=$(cache_get latest_old) || exit $?
+	latest_new=$(cache_get latest_new) || exit $?
 
 	local commit_message
 	if test -n "$arg_addmerge_message"
@@ -623,22 +633,32 @@ add_msg () {
 	EOF
 }
 
-# Usage: add_squashed_msg REV DIR
+# Usage: add_squashed_msg
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 add_squashed_msg () {
-	assert test $# = 2
+	assert test $# = 0
+
+	local latest_new
+	latest_new=$(cache_get latest_new) || exit $?
+
 	if test -n "$arg_addmerge_message"
 	then
 		echo "$arg_addmerge_message"
 	else
-		echo "Merge commit '$1' as '$2'"
+		echo "Merge commit '$latest_new' as '$dir'"
 	fi
 }
 
-# Usage: rejoin_msg LATEST_OLD LATEST_NEW
+# Usage: rejoin_msg
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
 rejoin_msg () {
-	assert test $# = 2
-	local latest_old="$1"
-	local latest_new="$2"
+	assert test $# = 0
+
+	local latest_old latest_new
+	latest_old=$(cache_get latest_old) || exit $?
+	latest_new=$(cache_get latest_new) || exit $?
 
 	local commit_message
 	if test -n "$arg_addmerge_message"
@@ -867,36 +887,60 @@ process_split_commit () {
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
-	exists=$(cache_get "$rev") || exit $?
-	if test -n "$exists"
+
+	cached=$(cache_get "$rev") || exit $?
+	if test -n "$cached"
 	then
-		debug "prior: $exists"
+		debug "cached: $cached"
 		return
 	fi
-	createcount=$(($createcount + 1)) # in parent scope
-	debug "parents: $parents"
-	check_parents "$parents"
-	# shellcheck disable=SC2086 # $parents is intentionally unquoted
-	newparents=$(cache_get $parents) || exit $?
-	debug "newparents: $newparents"
 
 	tree=$(subtree_for_commit "$rev") || exit $?
-	debug "tree is: $tree"
-
-	# ugly.  is there no better way to tell if this is a subtree
-	# vs. a mainline commit?  Does it matter?
+	debug "dir tree: $tree"
 	if test -z "$tree"
 	then
-		set_notree "$rev"
-		if test -n "$newparents"
+		# This is either a mainline-commit without the
+		# subtree, or a subtree-commit that has already been
+		# split off.  We need to determine which.
+		#
+		# shellcheck disable=SC2046 # $(cat ...) is intentionally unquoted
+		if ! git merge-base "$rev" -- $(cat "$cachedir/subtree") >/dev/null 2>&1
 		then
+			# It has no ancestor that is known to be a
+			# subtree-commit; assume it's a
+			# mainline-commit.
+			set_notree "$rev"
+			debug "notree"
+			return
+		else
+			# It does have an ancesstor that is known to
+			# be a subtree commit; assume it's a
+			# subtree-commit.
+			#
+			# This could be a false-positive if the
+			# subtree was deleted, however given that the
+			# user asked us to split the subtree from this
+			# rev, that seems unlikely.
+			debug "subtree"
 			cache_set "$rev" "$rev"
+			cache_set latest_new "$newrev"
+			return
 		fi
-		return
 	fi
 
+	createcount=$((createcount + 1)) # in parent scope
+
+	# shellcheck disable=SC2086
+	debug parents: $parents
+	# shellcheck disable=SC2086
+	ensure_parents $parents
+	# shellcheck disable=SC2086
+	newparents=$(cache_get $parents) || exit $?
+	# shellcheck disable=SC2086
+	debug newparents: $newparents
+
 	newrev=$(copy_or_skip "$rev" "$tree" "$newparents") || exit $?
-	debug "newrev is: $newrev"
+	debug "newrev: $newrev"
 	cache_set "$rev" "$newrev"
 	cache_set latest_new "$newrev"
 	cache_set latest_old "$rev"
@@ -907,6 +951,8 @@ process_split_commit () {
 cmd_add () {
 
 	ensure_clean
+
+	cache_setup || exit $?
 
 	if test $# -eq 1
 	then
@@ -965,16 +1011,19 @@ cmd_add_commit () {
 		headp=
 	fi
 
+	cache_set latest_new "$rev"
+	cache_set latest_old "$headrev"
+
 	if test -n "$arg_addmerge_squash"
 	then
 		rev=$(new_squash_commit "" "" "$rev") || exit $?
 		# shellcheck disable=SC2086 # $headp is intentionally unquoted
-		commit=$(add_squashed_msg "$rev" "$dir" |
+		commit=$(add_squashed_msg |
 			git commit-tree "$tree" $headp -p "$rev") || exit $?
 	else
 		revp=$(peel_committish "$rev") || exit $?
 		# shellcheck disable=SC2086 # $headp is intentionally unquoted
-		commit=$(add_msg "$headrev" "$rev" |
+		commit=$(add_msg |
 			git commit-tree "$tree" $headp -p "$revp") || exit $?
 	fi
 	git reset "$commit" || exit $?
@@ -1015,7 +1064,7 @@ cmd_split () {
 	# (and rev-list --follow doesn't seem to solve this)
 	local revmax
 	# shellcheck disable=SC2086 # $unrevs is intentionally unquoted
-	revmax=$(git rev-list --topo-order --reverse --parents "$rev" $unrevs | wc -l) # global
+	revmax=$(git rev-list --count "$rev" $unrevs) # global
 	readonly revmax
 	local revcount=0
 	local createcount=0
@@ -1038,9 +1087,7 @@ cmd_split () {
 	if test -n "$arg_split_rejoin"
 	then
 		debug "Merging split branch into HEAD..."
-		local latest_old
-		latest_old=$(cache_get latest_old) || exit $?
-		arg_addmerge_message="$(rejoin_msg "$latest_old" "$latest_new")" || exit $?
+		arg_addmerge_message="$(rejoin_msg)" || exit $?
 		local latest_squash
 		latest_squash=$(find_latest_squash "$rev") || exit $?
 		if test -z "$latest_squash"
