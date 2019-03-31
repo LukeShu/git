@@ -290,7 +290,6 @@ main () {
 	debug "quiet: {$GIT_QUIET}"
 	debug "dir: {$dir}"
 	debug "opts: {$*}"
-	debug
 
 	"cmd_$arg_command" "$@"
 }
@@ -609,15 +608,17 @@ find_existing_splits () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
-			if test -n "$sub"
+			if test -z "$sub"
 			then
+				debug "prior malformed commit: $sq"
+			else
 				if test -z "$main"
 				then
 					debug "prior --squash: $sq"
 					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "prior --rejoin: $sq"
+					debug "prior --rejoin or add: $sq"
 					debug "  git-subtree-mainline: '$main'"
 					debug "  git-subtree-split:    '$sub'"
 					cache_set "$main" "$sub"
@@ -1013,6 +1014,7 @@ process_split_commit () {
 # Usage: cmd_add REV
 #    Or: cmd_add REPOSITORY REF
 cmd_add () {
+	debug
 
 	ensure_clean
 
@@ -1108,6 +1110,8 @@ cmd_split () {
 	else
 		die "You must provide exactly one revision.  Got: '$*'"
 	fi
+	debug "rev: {$rev}"
+	debug
 
 	if test -n "$arg_split_rejoin"
 	then
@@ -1189,6 +1193,9 @@ cmd_merge () {
 	local rev
 	rev=$(git rev-parse -q --verify "$1^{commit}") ||
 		die "'$1' does not refer to a commit"
+	debug "rev: {$rev}"
+	debug
+
 	ensure_clean
 
 	if test -n "$arg_addmerge_squash"
@@ -1232,6 +1239,8 @@ cmd_pull () {
 	fi
 	ensure_clean
 	ensure_valid_ref_format "refs/heads/$2"
+	debug
+
 	git fetch "$@" || exit $?
 	cmd_merge FETCH_HEAD
 }
@@ -1262,6 +1271,7 @@ cmd_push () {
 		local localrev_presplit
 		localrev_presplit=$(git rev-parse -q --verify "$localrevname_presplit^{commit}") ||
 			die "'$localrevname_presplit' does not refer to a commit"
+		debug
 
 		echo "git push using: " "$repository" "$refspec"
 		local localrev
