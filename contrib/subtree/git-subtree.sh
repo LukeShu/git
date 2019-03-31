@@ -59,14 +59,14 @@ progress () {
 assert () {
 	if ! "$@"
 	then
-		die "assertion failed: " "$@"
+		die "assertion failed: $*"
 	fi
 }
 
 ensure_single_rev () {
 	if test $# -ne 1
 	then
-		die "You must provide exactly one revision.  Got: '$@'"
+		die "You must provide exactly one revision.  Got: '$*'"
 	fi
 }
 
