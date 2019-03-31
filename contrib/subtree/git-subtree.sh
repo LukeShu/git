@@ -54,7 +54,12 @@ debug () {
 progress () {
 	if test -z "$GIT_QUIET"
 	then
-		printf "%s\r" "$*" >&2
+		if test -n "$arg_debug"
+		then
+			printf "progress: %s\n" "$*" >&2
+		else
+			printf "%s\r" "$*" >&2
+		fi
 	fi
 }
 
