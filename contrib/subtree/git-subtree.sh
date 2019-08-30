@@ -302,7 +302,7 @@ find_latest_squash () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^0")" ||
+			sub="$(git rev-parse "$b^{commit}")" ||
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
@@ -349,7 +349,7 @@ find_existing_splits () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^0")" ||
+			sub="$(git rev-parse "$b^{commit}")" ||
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
