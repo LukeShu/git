@@ -28,7 +28,7 @@ rejoin        merge the new branch back into HEAD
 squash        merge subtree changes as a single commit
 "
 
-PATH=$PATH:$(git --exec-path)
+PATH=$(git --exec-path):$PATH
 . git-sh-setup
 
 arg_debug=
