@@ -13,14 +13,6 @@ TEST_DIRECTORY=$(pwd)/../../../t
 export TEST_DIRECTORY
 . "$TEST_DIRECTORY"/test-lib.sh
 
-subtree_test_create_repo () {
-	test_create_repo "$1" &&
-	(
-		cd "$1" &&
-		git config log.date relative
-	)
-}
-
 create () {
 	echo "$1" >"$1" &&
 	git add "$1"
@@ -85,8 +77,8 @@ last_commit_message () {
 #
 
 test_expect_success 'no merge from non-existent subtree' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -97,8 +89,8 @@ test_expect_success 'no merge from non-existent subtree' '
 '
 
 test_expect_success 'no pull from non-existent subtree' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -109,8 +101,8 @@ test_expect_success 'no pull from non-existent subtree' '
 '
 
 test_expect_success 'add subproj as subtree into sub dir/ with --prefix' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -122,8 +114,8 @@ test_expect_success 'add subproj as subtree into sub dir/ with --prefix' '
 '
 
 test_expect_success 'add subproj as subtree into sub dir/ with --prefix and --message' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -135,8 +127,8 @@ test_expect_success 'add subproj as subtree into sub dir/ with --prefix and --me
 '
 
 test_expect_success 'add subproj as subtree into sub dir/ with --prefix as -P and --message as -m' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -148,8 +140,8 @@ test_expect_success 'add subproj as subtree into sub dir/ with --prefix as -P an
 '
 
 test_expect_success 'add subproj as subtree into sub dir/ with --squash and --prefix and --message' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -165,8 +157,8 @@ test_expect_success 'add subproj as subtree into sub dir/ with --squash and --pr
 #
 
 test_expect_success 'merge new subproj history into sub dir/ with --prefix' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -184,8 +176,8 @@ test_expect_success 'merge new subproj history into sub dir/ with --prefix' '
 '
 
 test_expect_success 'merge new subproj history into sub dir/ with --prefix and --message' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -203,8 +195,8 @@ test_expect_success 'merge new subproj history into sub dir/ with --prefix and -
 '
 
 test_expect_success 'merge new subproj history into sub dir/ with --squash and --prefix and --message' '
-	subtree_test_create_repo "$test_count/sub proj" &&
-	subtree_test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -222,8 +214,8 @@ test_expect_success 'merge new subproj history into sub dir/ with --squash and -
 '
 
 test_expect_success 'merge the added subproj again, should do nothing' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -261,8 +253,8 @@ test_expect_success 'merge new subproj history into subdir/ with a slash appende
 #
 
 test_expect_success 'split requires option --prefix' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -280,8 +272,8 @@ test_expect_success 'split requires option --prefix' '
 '
 
 test_expect_success 'split requires path given by option --prefix must exist' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -299,8 +291,8 @@ test_expect_success 'split requires path given by option --prefix must exist' '
 '
 
 test_expect_success 'split sub dir/ with --rejoin' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -323,7 +315,7 @@ test_expect_success 'split sub dir/ with --rejoin' '
 '
 
 test_expect_success 'split sub dir/ with --rejoin from scratch' '
-	subtree_test_create_repo "$test_count" &&
+	test_create_repo "$test_count" &&
 	test_create_commit "$test_count" main1 &&
 	(
 		cd "$test_count" &&
@@ -338,8 +330,8 @@ test_expect_success 'split sub dir/ with --rejoin from scratch' '
 '
 
 test_expect_success 'split sub dir/ with --rejoin and --message' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -361,8 +353,8 @@ test_expect_success 'split sub dir/ with --rejoin and --message' '
 '
 
 test_expect_success 'split "sub dir"/ with --branch' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -385,8 +377,8 @@ test_expect_success 'split "sub dir"/ with --branch' '
 '
 
 test_expect_success 'check hash of split' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -416,8 +408,8 @@ test_expect_success 'check hash of split' '
 '
 
 test_expect_success 'split "sub dir"/ with --branch for an existing branch' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -441,8 +433,8 @@ test_expect_success 'split "sub dir"/ with --branch for an existing branch' '
 '
 
 test_expect_success 'split "sub dir"/ with --branch for an incompatible branch' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -468,8 +460,8 @@ test_expect_success 'split "sub dir"/ with --branch for an incompatible branch' 
 #
 
 test_expect_success 'make sure exactly the right set of files ends up in the subproj' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -517,8 +509,8 @@ test_expect_success 'make sure exactly the right set of files ends up in the sub
 '
 
 test_expect_success 'make sure the subproj *only* contains commits that affect the "sub dir"' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -567,8 +559,8 @@ test_expect_success 'make sure the subproj *only* contains commits that affect t
 '
 
 test_expect_success 'make sure exactly the right set of files ends up in the mainline' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -625,8 +617,8 @@ test_expect_success 'make sure exactly the right set of files ends up in the mai
 '
 
 test_expect_success 'make sure each filename changed exactly once in the entire history' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -690,8 +682,8 @@ test_expect_success 'make sure each filename changed exactly once in the entire 
 '
 
 test_expect_success 'make sure the --rejoin commits never make it into subproj' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -739,8 +731,8 @@ test_expect_success 'make sure the --rejoin commits never make it into subproj' 
 '
 
 test_expect_success 'make sure no "git subtree" tagged commits make it into subproj' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -794,8 +786,8 @@ test_expect_success 'make sure no "git subtree" tagged commits make it into subp
 #
 
 test_expect_success 'make sure "git subtree split" find the correct parent' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -824,8 +816,8 @@ test_expect_success 'make sure "git subtree split" find the correct parent' '
 '
 
 test_expect_success 'split a new subtree without --onto option' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -858,8 +850,8 @@ test_expect_success 'split a new subtree without --onto option' '
 '
 
 test_expect_success 'verify one file change per commit' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -901,8 +893,8 @@ test_expect_success 'verify one file change per commit' '
 '
 
 test_expect_success 'push split to subproj' '
-	subtree_test_create_repo "$test_count" &&
-	subtree_test_create_repo "$test_count/sub proj" &&
+	test_create_repo "$test_count" &&
+	test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
 	test_create_commit "$test_count/sub proj" sub1 &&
 	(
@@ -952,7 +944,7 @@ test_expect_success 'push split to subproj' '
 #
 
 test_expect_success 'subtree descendant check' '
-	subtree_test_create_repo "$test_count" &&
+	test_create_repo "$test_count" &&
 	defaultBranch=$(sed "s,ref: refs/heads/,," "$test_count/.git/HEAD") &&
 	test_create_commit "$test_count" folder_subtree/a &&
 	(
