@@ -10,13 +10,7 @@ and split subcommands of git subtree.
 '
 
 TEST_DIRECTORY=$(pwd)/../../../t
-export TEST_DIRECTORY
 . "$TEST_DIRECTORY"/test-lib.sh
-
-create () {
-	echo "$1" >"$1" &&
-	git add "$1"
-}
 
 check_equal () {
 	test_debug 'echo'
@@ -27,10 +21,6 @@ check_equal () {
 	else
 		return 1
 	fi
-}
-
-undo () {
-	git reset --hard HEAD~
 }
 
 # Make sure no patch changes more than one file.
