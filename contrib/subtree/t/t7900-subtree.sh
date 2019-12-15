@@ -11,11 +11,9 @@ and split subcommands of git subtree.
 
 TEST_DIRECTORY=$(pwd)/../../../t
 export TEST_DIRECTORY
+. "$TEST_DIRECTORY"/test-lib.sh
 
-. ../../../t/test-lib.sh
-
-subtree_test_create_repo()
-{
+subtree_test_create_repo () {
 	test_create_repo "$1" &&
 	(
 		cd "$1" &&
@@ -23,26 +21,24 @@ subtree_test_create_repo()
 	)
 }
 
-create()
-{
+create () {
 	echo "$1" >"$1" &&
 	git add "$1"
 }
 
-check_equal()
-{
+check_equal () {
 	test_debug 'echo'
 	test_debug "echo \"check a:\" \"{$1}\""
 	test_debug "echo \"      b:\" \"{$2}\""
-	if [ "$1" = "$2" ]; then
+	if [ "$1" = "$2" ]
+	then
 		return 0
 	else
 		return 1
 	fi
 }
 
-undo()
-{
+undo () {
 	git reset --hard HEAD~
 }
 
@@ -50,8 +46,7 @@ undo()
 # The original set of commits changed only one file each.
 # A multi-file change would imply that we pruned commits
 # too aggressively.
-join_commits()
-{
+join_commits () {
 	commit=
 	all=
 	while read x y; do
@@ -70,7 +65,7 @@ join_commits()
 	echo "$commit $all"
 }
 
-test_create_commit() (
+test_create_commit () (
 	repo=$1 &&
 	commit=$2 &&
 	cd "$repo" &&
@@ -81,8 +76,7 @@ test_create_commit() (
 	git commit -m "$commit" || error "Could not commit"
 )
 
-last_commit_message()
-{
+last_commit_message () {
 	git log --pretty=format:%s -1
 }
 
@@ -111,7 +105,8 @@ test_expect_success 'no pull from non-existent subtree' '
 		cd "$test_count" &&
 		git fetch ./"sub proj" HEAD &&
 		test_must_fail git subtree pull --prefix="sub dir" ./"sub proj" HEAD
-	)'
+	)
+'
 
 test_expect_success 'add subproj as subtree into sub dir/ with --prefix' '
 	subtree_test_create_repo "$test_count" &&
@@ -325,7 +320,7 @@ test_expect_success 'split sub dir/ with --rejoin' '
 		git subtree split --prefix="sub dir" --annotate="*" --rejoin &&
 		check_equal "$(last_commit_message)" "Split '\''sub dir/'\'' into commit '\''$split_hash'\''"
 	)
- '
+'
 
 test_expect_success 'split sub dir/ with --rejoin from scratch' '
 	subtree_test_create_repo "$test_count" &&
@@ -340,7 +335,7 @@ test_expect_success 'split sub dir/ with --rejoin from scratch' '
 		git subtree split --prefix="sub dir" --rejoin &&
 		check_equal "$(last_commit_message)" "Split '\''sub dir/'\'' into commit '\''$split_hash'\''"
 	)
- '
+'
 
 test_expect_success 'split sub dir/ with --rejoin and --message' '
 	subtree_test_create_repo "$test_count" &&
@@ -921,18 +916,18 @@ test_expect_success 'push split to subproj' '
 	test_create_commit "$test_count" "sub dir"/main-sub2 &&
 	(
 		cd $test_count/"sub proj" &&
-                git branch sub-branch-1 &&
-                cd .. &&
+		git branch sub-branch-1 &&
+		cd .. &&
 		git fetch ./"sub proj" HEAD &&
 		git subtree merge --prefix="sub dir" FETCH_HEAD
 	) &&
 	test_create_commit "$test_count" "sub dir"/main-sub3 &&
-        (
+	(
 		cd "$test_count" &&
-	        git subtree push ./"sub proj" --prefix "sub dir" sub-branch-1 &&
-                cd ./"sub proj" &&
-                git checkout sub-branch-1 &&
-         	check_equal "$(last_commit_message)" "sub dir/main-sub3"
+		git subtree push ./"sub proj" --prefix "sub dir" sub-branch-1 &&
+		cd ./"sub proj" &&
+		git checkout sub-branch-1 &&
+		check_equal "$(last_commit_message)" "sub dir/main-sub3"
 	)
 '
 
