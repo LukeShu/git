@@ -11,11 +11,9 @@ and split subcommands of git subtree.
 
 TEST_DIRECTORY=$(pwd)/../../../t
 export TEST_DIRECTORY
+. "$TEST_DIRECTORY"/test-lib.sh
 
-. ../../../t/test-lib.sh
-
-subtree_test_create_repo()
-{
+subtree_test_create_repo () {
 	test_create_repo "$1" &&
 	(
 		cd "$1" &&
@@ -23,14 +21,12 @@ subtree_test_create_repo()
 	)
 }
 
-create()
-{
+create () {
 	echo "$1" >"$1" &&
 	git add "$1"
 }
 
-check_equal()
-{
+check_equal () {
 	test_debug 'echo'
 	test_debug "echo \"check a:\" \"{$1}\""
 	test_debug "echo \"      b:\" \"{$2}\""
@@ -41,8 +37,7 @@ check_equal()
 	fi
 }
 
-undo()
-{
+undo () {
 	git reset --hard HEAD~
 }
 
@@ -50,8 +45,7 @@ undo()
 # The original set of commits changed only one file each.
 # A multi-file change would imply that we pruned commits
 # too aggressively.
-join_commits()
-{
+join_commits () {
 	commit=
 	all=
 	while read x y; do
@@ -70,7 +64,7 @@ join_commits()
 	echo "$commit $all"
 }
 
-test_create_commit() (
+test_create_commit () (
 	repo=$1 &&
 	commit=$2 &&
 	cd "$repo" &&
@@ -81,8 +75,7 @@ test_create_commit() (
 	git commit -m "$commit" || error "Could not commit"
 )
 
-last_commit_message()
-{
+last_commit_message () {
 	git log --pretty=format:%s -1
 }
 
