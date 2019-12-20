@@ -16,7 +16,8 @@ check_equal () {
 	test_debug 'echo'
 	test_debug "echo \"check a:\" \"{$1}\""
 	test_debug "echo \"      b:\" \"{$2}\""
-	if [ "$1" = "$2" ]; then
+	if [ "$1" = "$2" ]
+	then
 		return 0
 	else
 		return 1
@@ -867,18 +868,18 @@ test_expect_success 'push split to subproj' '
 	test_create_commit "$test_count" "sub dir"/main-sub2 &&
 	(
 		cd $test_count/"sub proj" &&
-                git branch sub-branch-1 &&
-                cd .. &&
+		git branch sub-branch-1 &&
+		cd .. &&
 		git fetch ./"sub proj" master &&
 		git subtree merge --prefix="sub dir" FETCH_HEAD
 	) &&
 	test_create_commit "$test_count" "sub dir"/main-sub3 &&
-        (
+	(
 		cd "$test_count" &&
-	        git subtree push ./"sub proj" --prefix "sub dir" sub-branch-1 &&
-                cd ./"sub proj" &&
-                git checkout sub-branch-1 &&
-         	check_equal "$(last_commit_message)" "sub dir/main-sub3"
+		git subtree push ./"sub proj" --prefix "sub dir" sub-branch-1 &&
+		cd ./"sub proj" &&
+		git checkout sub-branch-1 &&
+		check_equal "$(last_commit_message)" "sub dir/main-sub3"
 	)
 '
 
