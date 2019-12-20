@@ -264,6 +264,12 @@ cache_setup () {
 	true > "$cachedir/subtree" ||
 		die "Can't create new cachedir: $cachedir/subtree"
 	debug "Using cachedir: $cachedir" >&2
+
+	local rev
+	git rev-list ambassador-docs/master ^ambassador-docs/early-access | while read -r rev
+	do 
+		set_notree "$rev"
+	done
 }
 
 # Usage: cache_get [REVS...]
@@ -326,6 +332,7 @@ cache_set_internal () {
 			if test "$oldval" = "$val"
 			then
 				debug "already cached: commit:$key = subtree_commit:$val"
+				cache_set_existed=true
 				return
 			else
 				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
@@ -349,6 +356,8 @@ cache_set () {
 	local key="$1"
 	local val="$2"
 
+	local cache_set_existed=false
+
 	if test "$key" != "$val"
 	then
 		cache_set_internal "$key" "$val"
@@ -356,12 +365,18 @@ cache_set () {
 		# If we've stumbled on to a true subtree-commit, go
 		# ahead and mark its entire history as being able to
 		# be used verbatim.
-		local indent=$(($indent + 1))
+		local _indent=$indent
 		local rev
 		git rev-list "$val" |
 		while read -r rev
 		do
+			
 			cache_set_internal "$rev" "$rev"
+			if test "$cache_set_existed" = true
+			then
+				break
+			fi
+			local indent=$(($_indent + 1))
 		done || exit $?
 	fi
 }
@@ -390,7 +405,7 @@ try_remove_previous () {
 	fi
 }
 
-# Usage: find_latest_squash DIR REVS...
+# Usage: find_latest_squash REVS...
 #
 # Print a pair "A B", where:
 # - A is the latest in-mainline-subtree-commit (either a real
@@ -398,9 +413,7 @@ try_remove_previous () {
 # - B is the corresponding real subtree-commit (just A again, unless
 #   --squash)
 find_latest_squash () {
-	assert test $# -gt 1
-	local dir="$1"
-	shift
+	assert test $# -gt 0
 	debug "Looking for latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
@@ -426,8 +439,10 @@ find_latest_squash () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
-			if test -n "$sub"
+			if test -z "$sub"
 			then
+				debug "prior malformed commit: $sq"
+			else
 				if test -z "$main"
 				then
 					debug "prior --squash: $sq"
@@ -546,21 +561,40 @@ find_existing_splits () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
+			if test -z "$sub"
 			then
 				debug "prior malformed commit: $sq"
-			then
+			else
 				if test -z "$main"
 				then
 					debug "prior --squash: $sq"
 					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "prior --rejoin or add: $sq"
-					debug "  git-subtree-mainline: '$main'"
-					debug "  git-subtree-split:    '$sub'"
-					cache_set "$main" "$sub"
+					local mainline_tree split_tree
+					mainline_tree=$(subtree_for_commit "$main")
+					split_tree=$(toptree_for_commit "$sub")
+
+					if test -z "$mainline_tree"
+					then
+						debug "prior add: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+					elif test "$mainline_tree" = "split_tree"
+					then
+						debug "prior --rejoin: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+						cache_set "$main" "$sub"
+						try_remove_previous "$main"
+					else
+						# `git subtree merge` doesn't currently do this, but it wouldn't be a
+						# bad idea.
+						debug "prior merge: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+					fi
 					cache_set "$sub" "$sub"
-					try_remove_previous "$main"
 					try_remove_previous "$sub"
 				fi
 			fi
@@ -597,7 +631,7 @@ copy_commit () {
 			printf "%s" "$arg_split_annotate"
 			cat
 		) |
-		git commit-tree "$2" "$3"  # reads the rest of stdin
+		git commit-tree "$2" $3  # reads the rest of stdin
 	) || die "Can't copy commit $1"
 }
 
@@ -664,12 +698,11 @@ rejoin_msg () {
 	EOF
 }
 
-# Usage: squash_msg DIR OLD_SUBTREE_COMMIT NEW_SUBTREE_COMMIT
+# Usage: squash_msg OLD_SUBTREE_COMMIT NEW_SUBTREE_COMMIT
 squash_msg () {
-	assert test $# = 3
-	local dir="$1"
-	local oldsub="$2"
-	local newsub="$3"
+	assert test $# = 2
+	local oldsub="$1"
+	local newsub="$2"
 
 	local oldsub_short newsub_short
 	newsub_short=$(git rev-parse --short "$newsub")
@@ -697,11 +730,10 @@ toptree_for_commit () {
 	git rev-parse --verify "$commit^{tree}" || exit $?
 }
 
-# Usage: subtree_for_commit DIR COMMIT
+# Usage: subtree_for_commit COMMIT
 subtree_for_commit () {
-	assert test $# = 2
-	local dir="$1"
-	local commit="$2"
+	assert test $# = 1
+	local commit="$1"
 	local mode type tree name
 	git ls-tree "$commit" -- "$dir" |
 	while read -r mode type tree name
@@ -745,10 +777,10 @@ new_squash_commit () {
 	tree=$(toptree_for_commit "$newsub") || exit $?
 	if test -n "$old"
 	then
-		squash_msg "$dir" "$oldsub" "$newsub" |
+		squash_msg "$oldsub" "$newsub" |
 		git commit-tree "$tree" -p "$old" || exit $?
 	else
-		squash_msg "$dir" "" "$newsub" |
+		squash_msg "" "$newsub" |
 		git commit-tree "$tree" || exit $?
 	fi
 }
@@ -881,22 +913,38 @@ process_split_commit () {
 		debug "cached: $cached"
 		return
 	fi
+	if test -r "$cachedir/notree/$rev"
+	then
+		debug "cached: notree"
+		return
+	fi
 
-	tree=$(subtree_for_commit "$dir" "$rev") || exit $?
+	tree=$(subtree_for_commit "$rev") || exit $?
 	debug "dir tree: $tree"
 	if test -z "$tree"
 	then
 		# This is either a mainline-commit without the
 		# subtree, or a subtree-commit that has already been
 		# split off.  We need to determine which.
-		if git merge-base "$rev" -- $(cat "$cachedir/subtree") >/dev/null 2>&1; then
+		if ! git merge-base "$rev" -- $(cat "$cachedir/subtree") >/dev/null 2>&1
+		then
 			# It has no ancestor that is known to be a
-			# subtree-comit; assume it's a
+			# subtree-commit; assume it's a
 			# mainline-commit.
 			set_notree "$rev"
 			debug "notree"
+			if test "$rev" = fc0c2f09ac1d69f360af6f958ae72b8e9e90bc93
+			then
+				rev=$rev cachedir=$cachedir urxvt
+			fi
 			return
 		else
+			if test -n "$(git ls-tree "$rev" -- content)"
+			then
+				# hack
+				set_notree "$rev"
+				debug "notree"
+			fi
 			# It does have an ancesstor that is known to
 			# be a subtree commit; assume it's a
 			# subtree-commit.
@@ -1012,16 +1060,19 @@ cmd_add_commit () {
 
 # Usage: cmd_split [REV]
 cmd_split () {
-	if test $# -eq 0
-	then
+	local rev
+	case $# in
+	0)
 		rev=$(git rev-parse HEAD)
-	elif test $# -eq 1
-	then
+		;;
+	1)
 		rev=$(git rev-parse -q --verify "$1^{commit}") ||
 			die "'$1' does not refer to a commit"
-	else
+		;;
+	*)
 		die "You must provide exactly one revision.  Got: '$*'"
-	fi
+		;;
+	esac
 	debug "rev: {$rev}"
 	debug
 
@@ -1037,6 +1088,7 @@ cmd_split () {
 	# shellcheck disable=SC2086
 	unrevs="$(find_existing_splits "$rev")" || exit $?
 	debug
+	debug "rev: {$rev}"
 	# shellcheck disable=SC2086
 	debug unrevs: {$unrevs}
 	debug
@@ -1045,16 +1097,18 @@ cmd_split () {
 	# parents have the $dir contents the root, and those won't match.
 	# (and rev-list --follow doesn't seem to solve this)
 	# shellcheck disable=SC2086
-	revmax=$(git rev-list --count $rev $unrevs)
+	revmax=$(git rev-list --count "$rev" $unrevs)
+	debug "revmax={${revmax}}"
 	readonly revmax
 	revcount=0
 	createcount=0
 	extracount=0
 	local rev parents
 	# shellcheck disable=SC2086
-	git rev-list --topo-order --reverse --parents $rev $unrevs |
+	git rev-list --topo-order --reverse --parents "$rev" $unrevs |
 	while read -r rev parents
 	do
+		debug process_split_commit "$rev" "$parents"
 		process_split_commit "$rev" "$parents"
 	done || exit $?
 
@@ -1070,13 +1124,12 @@ cmd_split () {
 		debug "Merging split branch into HEAD..."
 		arg_addmerge_message="$(rejoin_msg)" || exit $? # XXX
 		local latest_squash
-		# shellcheck disable=SC2086
-		latest_squash=$(find_latest_squash "$dir" $rev) || exit $?
+		latest_squash=$(find_latest_squash "$rev") || exit $?
 		if test -z "$latest_squash"
 		then
-			cmd_add "$latest_new" || exit $?
+			cmd_add "$latest_new" >&2 || exit $?
 		else
-			cmd_merge "$latest_new" || exit $?
+			cmd_merge "$latest_new" >&2 || exit $?
 		fi
 	fi
 	if test -n "$arg_split_branch"
@@ -1115,7 +1168,7 @@ cmd_merge () {
 	if test -n "$arg_addmerge_squash"
 	then
 		local first_split
-		first_split="$(find_latest_squash "$dir" "$rev")" || exit $?
+		first_split="$(find_latest_squash "$rev")" || exit $?
 		if test -z "$first_split"
 		then
 			die "Can't squash-merge: '$dir' was never added."
