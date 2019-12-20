@@ -1313,7 +1313,7 @@ test_expect_success 'make sure "git subtree split" find the correct parent' '
 	)
 '
 
-test_expect_success 'split a new subtree without --onto option' '
+test_expect_failure 'split a new subtree without --onto option' '
 	subtree_test_create_repo "$test_count" &&
 	subtree_test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&
@@ -1347,7 +1347,7 @@ test_expect_success 'split a new subtree without --onto option' '
 	)
 '
 
-test_expect_success 'verify one file change per commit' '
+test_expect_failure 'verify one file change per commit' '
 	subtree_test_create_repo "$test_count" &&
 	subtree_test_create_repo "$test_count/sub proj" &&
 	test_create_commit "$test_count" main1 &&

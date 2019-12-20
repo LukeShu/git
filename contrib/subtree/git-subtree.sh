@@ -102,6 +102,17 @@ progress () {
 	fi
 }
 
+# Usage: progress_nl
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
+progress_nl () {
+	assert test $# = 0
+	if test -z "$GIT_QUIET" && test -z "$arg_debug"
+	then
+		printf "\n" >&2
+	fi
+}
+
 # Usage: assert CMD...
 assert () {
 	if ! "$@"
@@ -309,10 +320,6 @@ cache_setup () {
 		die "Can't delete old cachedir: $cachedir"
 	mkdir -p "$cachedir" ||
 		die "Can't create new cachedir: $cachedir"
-	mkdir -p "$cachedir/notree" ||
-		die "Can't create new cachedir: $cachedir/notree"
-	true > "$cachedir/subtree" ||
-		die "Can't create new cachedir: $cachedir/subtree"
 	debug "Using cachedir: $cachedir" >&2
 }
 
@@ -327,35 +334,6 @@ cache_get () {
 			cat "$cachedir/$oldrev"
 		fi
 	done
-}
-
-# Usage: ensure_parents [PARENTS...]
-#
-# Ensure that each commit in the list of 0 or more PARENTS is
-# accounted for in the cache.
-ensure_parents () {
-	local indent=$(($indent + 1))
-
-	# The list of parents must either (1) already have a cached
-	# mapping, or (2) be cached as not containing the subtree
-	# (i.e. the cache says "no mapping is possible").
-	local parent
-	for parent in "$@"
-	do
-		if ! test -r "$cachedir/$parent" && ! test -r "$cachedir/notree/$parent"
-		then
-			# Die.
-			debug "Unexpected non-cached parent: $parent"
-			process_split_commit "$parent" ""
-		fi
-	done
-}
-
-# Usage: set_notree REV
-set_notree () {
-	assert test $# = 1
-	assert test -n "$cachedir"
-	echo "1" > "$cachedir/notree/$1"
 }
 
 # Usage: cache_set_internal COMMIT SUBTREE_COMMIT
@@ -378,17 +356,25 @@ cache_set_internal () {
 			oldval=$(cat "$cachedir/$key")
 			if test "$oldval" = "$val"
 			then
-				debug "already cached: commit:$key = subtree_commit:$val"
+				debug "  already cached: commit:$key = subtree_commit:$val"
+				cache_set_existed=true
 				return
+			elif test "$oldval" = counted
+			then
+				debug "  overwriting existing subtree_commit:counted"
 			else
 				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 			fi
 		fi
-		echo "$val" >>"$cachedir/subtree"
+		if test "$val" != counted
+		then
+			echo "$val" >>"$cachedir/subtree"
+		fi
 		;;
 	esac
 	echo "$val" >"$cachedir/$key"
 }
+
 
 # Usage: cache_set COMMIT SUBTREE_COMMIT
 #
@@ -397,26 +383,57 @@ cache_set_internal () {
 #  - a mainline commit
 #  - a squashed subtree commit
 # mainline commit, or a subtree commit
+#
+# The global $cache_set_bailearly variable should not affect behavior;
+# but affect performance.  cache_set_bailearly=false is faster
+# per-commit, but keep processing all ancestors, even if they've
+# already been processed.  cache_set_bailearly=true is slower
+# per-commit, but can avoid doing superfluous work processing commits
+# that have already been processed.
+cache_set_bailearly=false
 cache_set () {
 	assert test $# = 2
 	local key="$1"
 	local val="$2"
 
-	if test "$key" != "$val"
+	local cache_set_existed=false
+
+	cache_set_internal "$key" "$val"
+
+	if  test "$cache_set_existed" = true || test "$key" = latest_old || test "$key" = latest_old
 	then
-		cache_set_internal "$key" "$val"
-	else
-		# If we've stumbled on to a true subtree-commit, go
-		# ahead and mark its entire history as being able to
-		# be used verbatim.
-		local indent=$(($indent + 1))
-		local rev
-		git rev-list "$val" |
-		while read -r rev
-		do
-			cache_set_internal "$rev" "$rev"
-		done || exit $?
+		return
 	fi
+
+	local indent=$((indent + 1))
+	case "$val" in
+	'counted')
+		:
+		;;
+	'notree')
+		:
+		;;
+	*)
+		# If we've identified a subtree-commit, then also
+		# record its ancestors as being subtree commits.
+		if $cache_set_bailearly
+		then
+			local parents
+			parents=$(git rev-parse "$val^@")
+			local parent
+			for parent in $parents
+			do
+				cache_set "$parent" "$parent"
+			done
+		else
+			git rev-list "$val^@" |
+			while read -r ancestor
+			do
+				cache_set_internal "$ancestor" "$ancestor"
+			done || exit $?
+		fi
+		;;
+	esac
 }
 
 # Usage: rev_exists REV
@@ -427,19 +444,6 @@ rev_exists () {
 		return 0
 	else
 		return 1
-	fi
-}
-
-# Usage: try_remove_previous REV
-#
-# If a commit doesn't have a parent, this might not work.  But we only want
-# to remove the parent from the rev-list, and since it doesn't exist, it won't
-# be there anyway, so do nothing in that case.
-try_remove_previous () {
-	assert test $# = 1
-	if rev_exists "$1^"
-	then
-		echo "^$1^"
 	fi
 }
 
@@ -477,8 +481,10 @@ find_latest_squash () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
-			if test -n "$sub"
+			if test -z "$sub"
 			then
+				debug "prior malformed commit: $sq"
+			else
 				if test -z "$main"
 				then
 					debug "prior --squash: $sq"
@@ -504,18 +510,17 @@ find_latest_squash () {
 	done || exit $?
 }
 
-# Usage: find_existing_splits REV
-find_existing_splits () {
+# Usage: split_process_annotated_commits REV
+split_process_annotated_commits () {
 	assert test $# = 1
 	local rev="$1"
-	debug "Looking for prior splits..."
+	debug "Looking for prior annotated commits..."
 	local indent=$(($indent + 1))
 
 	if test -n "$arg_split_onto"
 	then
 		debug "cli --onto: $arg_split_onto"
 		cache_set "$arg_split_onto" "$arg_split_onto"
-		try_remove_previous "$arg_split_onto"
 	fi
 
 	local grep_format="^git-subtree-dir: $dir/*\$"
@@ -618,13 +623,30 @@ find_existing_splits () {
 					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "prior --rejoin or add: $sq"
-					debug "  git-subtree-mainline: '$main'"
-					debug "  git-subtree-split:    '$sub'"
-					cache_set "$main" "$sub"
+					local mainline_tree split_tree
+					mainline_tree=$(subtree_for_commit "$main")
+					split_tree=$(toptree_for_commit "$sub")
+
+					if test -z "$mainline_tree"
+					then
+						debug "prior add: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+						cache_set "$main" notree
+					elif test "$mainline_tree" = "$split_tree"
+					then
+						debug "prior --rejoin: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+						cache_set "$main" "$sub"
+					else
+						# `git subtree merge` doesn't currently do this, but it wouldn't be a
+						# bad idea.
+						debug "prior merge: $sq"
+						debug "  git-subtree-mainline: '$main'"
+						debug "  git-subtree-split:    '$sub'"
+					fi
 					cache_set "$sub" "$sub"
-					try_remove_previous "$main"
-					try_remove_previous "$sub"
 				fi
 			fi
 			sq=
@@ -632,6 +654,7 @@ find_existing_splits () {
 			sub=
 			;;
 		esac
+		cache_set_bailearly=true
 	done || exit $?
 }
 
@@ -784,7 +807,11 @@ subtree_for_commit () {
 	do
 		assert test "$name" = "$dir"
 		assert test "$type" = "tree" -o "$type" = "commit"
-		test "$type" = "commit" && continue  # ignore submodules
+		if test "$type" != 'tree'
+		then
+			# ignore submodules and other not-a-plain-directory things
+			continue
+		fi
 		echo "$tree"
 		break
 	done || exit $?
@@ -905,7 +932,7 @@ copy_or_skip () {
 	fi
 	if test -n "$identical" && test -z "$copycommit"
 	then
-		echo "$identical"
+		echo "skip $identical"
 	else
 		copy_commit "$rev" "$tree" "$p" || exit $?
 	fi
@@ -933,82 +960,211 @@ ensure_valid_ref_format () {
 		die "'$1' does not look like a ref"
 }
 
-# Usage: process_split_commit REV PARENTS
-process_split_commit () {
-	assert test $# = 2
+# Usage: split_list_relevant_parents REV
+split_list_relevant_parents () {
+	assert test $# = 1
 	local rev="$1"
-	local parents="$2"
 
-	if test "$indent" -gt 0
+	local parents
+	parents=$(git rev-parse "$rev^@")
+
+	# If  (1.a) this is a simple 2-way merge,
+	# and (1.b) one of the parents has the subtree,
+	# and (1.c) the other parent does hot have the subtree,
+	# then:
+	#
+	#  it is reasonably safe to assume that this a subtree-merge
+	#  commit.
+	#
+	# If (1) is satisfied,
+	# and (2.a) the subtree-directory in mainline parent is identical to in the merge,
+	# but (2.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is for a
+	#  *different subtree* than the subtree-directory that we're
+	#  splitting, and that we should ignore the subtree parent.
+	#
+	# On the other hand,
+	# if (1) is satisfied,
+	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
+	# and (3.b) the subtree parent is identical to the subtree-directory in the merge,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is
+	#  specifically a --rejoin, and we can avoid crawling the
+	#  history more.
+
+	# shellcheck disable=SC2086 # $parents is intentionally unquoted
+	set -- $parents
+	if test $# = 2
 	then
-		# processing commit without normal parent information;
-		# fetch from repo
-		parents=$(git rev-parse "$rev^@")
-		extracount=$(($extracount + 1)) # in parent scope
+		local p1_subtree p2_subtree
+		p1_subtree=$(subtree_for_commit "$1")
+		p2_subtree=$(subtree_for_commit "$2")
+		local mainline='' mainline_subtree subtree
+		if test -n "$p1_subtree" && test -z "$p2_subtree"
+		then
+			mainline=$1
+			mainline_subtree=$p1_subtree
+			subtree=$2
+		elif test -z "$p1_subtree" && test -n "$p2_subtree"
+		then
+			mainline=$2
+			mainline_subtree=$p2_subtree
+			subtree=$1
+		fi
+		if test -n "$mainline"
+		then
+			# OK, condition (1) is satisfied
+			debug "commit $rev is a subtree-merge"
+			local merge_subtree
+			merge_subtree=$(subtree_for_commit "$rev")
+			if test "$merge_subtree" = "$mainline_subtree"
+			then
+				local subtree_toptree
+				subtree_toptree=$(toptree_for_commit "$subtree")
+				if test "$merge_subtree" != "$subtree_toptree"
+				then
+					# OK, condition (2) is satisfied
+					debug "commit $rev is a merge for a different subtree"
+					echo "$mainline"
+					return
+				else
+					# OK, condition (3) is satisfied
+					debug "commit $rev is is a --rejoin merge"
+					cache_set "$rev" "$subtree"
+					return
+				fi
+			fi
+		fi
 	fi
-	revcount=$(($revcount + 1)) # in parent scope
+	echo "$@" # $@ is set to $parents
+}
 
-	progress "rev:$revcount/($revmax+$extracount) (created:$createcount)"
+# Usage: split_count_commits REV
+#
+# Increments the `split_max` variable, stores the value "counted" in
+# to the cache for counted commits.
+split_count_commits () {
+	assert test $# = 1
+	local rev="$1"
+
+	local cached
+	cached=$(cache_get "$rev") || exit $?
+	if test -n "$cached"
+	then
+		return
+	fi
+
+	cache_set "$rev" counted
+	split_max=$(($split_max + 1)) # in parent scope
+	progress "Counting commits... $split_max"
+
+	local parents
+	parents=$(split_list_relevant_parents "$rev") || exit $?
+	local parent
+	for parent in $parents
+	do
+		split_count_commits "$parent"
+	done
+}
+
+# Usage: split_classify_commit REV
+split_classify_commit () {
+	assert test $# = 1
+	local rev="$1"
+
+	local tree
+	tree=$(subtree_for_commit "$rev") || exit $?
+	# shellcheck disable=SC2046 # $(grep ...) in the 'elif' is intentionally unquoted
+	if test -n "$tree"
+	then
+		# It contains the subtree path; presume it is a
+		# mainline commit that contains the subtree.
+		echo 'mainline:tree'
+	elif git merge-base "$rev" -- $(grep -rhvx notree "$cachedir") >/dev/null 2>&1
+	then
+		# It has an ancestor that is known to be a subtree
+		# commit; assume it's a subtree-commit.
+		echo 'split'
+	else
+		echo 'mainline:notree'
+	fi
+}
+
+# Usage: split_process_commit REV
+split_process_commit () {
+	assert test $# = 1
+	local rev="$1"
+
+	local cached
+	cached=$(cache_get "$rev") || exit $?
+	if test -n "$cached"
+	then
+		return
+	fi
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
 
-	cached=$(cache_get "$rev") || exit $?
-	if test -n "$cached"
-	then
-		debug "cached: $cached"
-		return
-	fi
+	local parents
+	parents=$(split_list_relevant_parents "$rev") || exit $?
+	local parent
+	for parent in $parents
+	do
+		split_process_commit "$parent"
+	done
 
-	tree=$(subtree_for_commit "$rev") || exit $?
-	debug "dir tree: $tree"
-	if test -z "$tree"
-	then
-		# This is either a mainline-commit without the
-		# subtree, or a subtree-commit that has already been
-		# split off.  We need to determine which.
-		#
-		# shellcheck disable=SC2046 # $(cat ...) is intentionally unquoted
-		if ! git merge-base "$rev" -- $(cat "$cachedir/subtree") >/dev/null 2>&1
+	debug "processed parents of $rev, processing commit itself..."
+
+	local classification
+	classification=$(split_classify_commit "$rev") || exit $?
+	debug "classification: {$classification}"
+	case "$classification" in
+	mainline:tree)
+		# shellcheck disable=SC2086
+		debug parents: $parents
+
+		local newparents
+		# shellcheck disable=SC2086
+		newparents=$(cache_get $parents | grep -vx notree || true)
+		# shellcheck disable=SC2086
+		debug newparents: $newparents
+
+		local tree
+		tree=$(subtree_for_commit "$rev") || exit $?
+
+		local newrev
+		split_created_from=$(($split_created_from + 1)) # in parent scope
+		newrev=$(copy_or_skip "$rev" "$tree" "$newparents") || exit $?
+		# shellcheck disable=SC2086 # $newrev is intentionally unquoted
+		set -- $newrev
+		if test "$1" = skip
 		then
-			# It has no ancestor that is known to be a
-			# subtree-commit; assume it's a
-			# mainline-commit.
-			set_notree "$rev"
-			debug "notree"
-			return
+			newrev=$2
 		else
-			# It does have an ancesstor that is known to
-			# be a subtree commit; assume it's a
-			# subtree-commit.
-			#
-			# This could be a false-positive if the
-			# subtree was deleted, however given that the
-			# user asked us to split the subtree from this
-			# rev, that seems unlikely.
-			debug "subtree"
-			cache_set "$rev" "$rev"
-			cache_set latest_new "$newrev"
-			return
+			split_created_to=$(($split_created_to + 1)) # in parent scope
 		fi
-	fi
 
-	createcount=$((createcount + 1)) # in parent scope
+		debug "newrev: $newrev"
+		cache_set "$rev" "$newrev"
+		cache_set latest_new "$newrev"
+		cache_set latest_old "$rev"
+		;;
+	mainline:notree)
+		cache_set "$rev" notree
+		cache_set latest_old "$rev"
+		;;
+	split)
+		debug "subtree"
+		cache_set "$rev" "$rev"
+		cache_set latest_new "$rev"
+		;;
+	esac
 
-	# shellcheck disable=SC2086
-	debug parents: $parents
-	# shellcheck disable=SC2086
-	ensure_parents $parents
-	# shellcheck disable=SC2086
-	newparents=$(cache_get $parents) || exit $?
-	# shellcheck disable=SC2086
-	debug newparents: $newparents
-
-	newrev=$(copy_or_skip "$rev" "$tree" "$newparents") || exit $?
-	debug "newrev: $newrev"
-	cache_set "$rev" "$newrev"
-	cache_set latest_new "$newrev"
-	cache_set latest_old "$rev"
+	split_processed=$(($split_processed + 1)) # in parent scope
+	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created_from}->${split_created_to})"
 }
 
 # Usage: cmd_add REV
@@ -1100,16 +1256,18 @@ cmd_add_commit () {
 # Usage: cmd_split [REV]
 cmd_split () {
 	local rev
-	if test $# -eq 0
-	then
+	case $# in
+	0)
 		rev=$(git rev-parse HEAD)
-	elif test $# -eq 1
-	then
+		;;
+	1)
 		rev=$(git rev-parse -q --verify "$1^{commit}") ||
 			die "'$1' does not refer to a commit"
-	else
+		;;
+	*)
 		die "You must provide exactly one revision.  Got: '$*'"
-	fi
+		;;
+	esac
 	debug "rev: {$rev}"
 	debug
 
@@ -1119,40 +1277,41 @@ cmd_split () {
 	fi
 
 	debug "Splitting $dir..."
-	cache_setup || exit $?
+	cache_setup
 
-	local unrevs
-	unrevs="$(find_existing_splits "$rev")" || exit $?
-	debug
-	debug "unrevs: {$unrevs}"
-	debug
+	# This will pre-load the cache with info from commits with
+	# "subtree-XXX: YYY" annotations in the commit message.
+	progress "Looking for prior annotated commits..."
+	split_process_annotated_commits "$rev"
+	progress_nl
 
-	# We can't restrict rev-list to only $dir here, because some of our
-	# parents have the $dir contents the root, and those won't match.
-	# (and rev-list --follow doesn't seem to solve this)
-	local revmax
-	# shellcheck disable=SC2086 # $unrevs is intentionally unquoted
-	revmax=$(git rev-list --count "$rev" $unrevs) # global
-	readonly revmax
-	local revcount=0
-	local createcount=0
-	local extracount=0
-	local lrev lparents
-	# shellcheck disable=SC2086 # $unrevs is intentionally unquoted
-	git rev-list --topo-order --reverse --parents "$rev" $unrevs |
-	while read -r lrev lparents
-	do
-		process_split_commit "$lrev" "$lparents"
-	done || exit $?
+	cache_set_bailearly=true
+
+	progress 'Counting commits...'
+	local split_max=0
+	split_count_commits "$rev"
+	readonly split_max
+	grep -rlx counted "$cachedir"|grep -v '/subtree$'|xargs -d '\n' rm -f --
+	progress_nl
+
+	local split_processed=0
+	local split_created_from=0
+	local split_created_to=0
+	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created_from}->${split_created_to})"
+	split_process_commit "$rev"
+	progress_nl
+
+	progress 'Done'
+	progress_nl
 
 	local latest_new
 	latest_new=$(cache_get latest_new) || exit $?
 	if test -z "$latest_new"
 	then
-		die "No new revisions were found"
-	fi
-
-	if test -n "$arg_split_rejoin"
+		say >&2 "No new revisions were found"
+		latest_new=$(cache_get "$rev") || exit $?
+		cache_set latest_new "$latest_new"
+	elif test -n "$arg_split_rejoin"
 	then
 		debug "Merging split branch into HEAD..."
 		arg_addmerge_message="$(rejoin_msg)" || exit $?
@@ -1165,6 +1324,7 @@ cmd_split () {
 			cmd_merge "$latest_new" >&2 || exit $?
 		fi
 	fi
+
 	if test -n "$arg_split_branch"
 	then
 		local action
