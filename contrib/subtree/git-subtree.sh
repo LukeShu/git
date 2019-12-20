@@ -246,8 +246,7 @@ cache_get () {
 	do
 		if test -r "$cachedir/$oldrev"
 		then
-			read newrev <"$cachedir/$oldrev"
-			echo $newrev
+			cat "$cachedir/$oldrev"
 		fi
 	done
 }
@@ -334,7 +333,7 @@ find_latest_squash () {
 	sub=
 	git log --grep="^git-subtree-dir: $dir/*\$" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' HEAD |
-	while read a b junk
+	while read -r a b junk
 	do
 		debug "$a $b $junk"
 		debug "{{$sq/$main/$sub}}"
@@ -387,7 +386,7 @@ find_existing_splits () {
 	fi
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$rev" |
-	while read a b junk
+	while read -r a b junk
 	do
 		case "$a" in
 		START)
@@ -411,8 +410,8 @@ find_existing_splits () {
 			if test -n "$main" -a -n "$sub"
 			then
 				debug "  Prior: $main -> $sub"
-				cache_set $main $sub
-				cache_set $sub $sub
+				cache_set "$main" "$sub"
+				cache_set "$sub" "$sub"
 				try_remove_previous "$main"
 				try_remove_previous "$sub"
 			fi
@@ -431,12 +430,12 @@ copy_commit () {
 	debug copy_commit "{$1}" "{$2}" "{$3}"
 	git log -1 --no-show-signature --pretty=format:'%an%n%ae%n%aD%n%cn%n%ce%n%cD%n%B' "$1" |
 	(
-		read GIT_AUTHOR_NAME
-		read GIT_AUTHOR_EMAIL
-		read GIT_AUTHOR_DATE
-		read GIT_COMMITTER_NAME
-		read GIT_COMMITTER_EMAIL
-		read GIT_COMMITTER_DATE
+		read -r GIT_AUTHOR_NAME
+		read -r GIT_AUTHOR_EMAIL
+		read -r GIT_AUTHOR_DATE
+		read -r GIT_COMMITTER_NAME
+		read -r GIT_COMMITTER_EMAIL
+		read -r GIT_COMMITTER_DATE
 		export  GIT_AUTHOR_NAME \
 			GIT_AUTHOR_EMAIL \
 			GIT_AUTHOR_DATE \
@@ -447,7 +446,7 @@ copy_commit () {
 			printf "%s" "$arg_split_annotate"
 			cat
 		) |
-		git commit-tree "$2" $3  # reads the rest of stdin
+		git commit-tree "$2" "$3"  # reads the rest of stdin
 	) || die "Can't copy commit $1"
 }
 
@@ -540,13 +539,14 @@ subtree_for_commit () {
 	assert test $# = 2
 	commit="$1"
 	dir="$2"
+	# shellcheck disable=SC2034
 	git ls-tree "$commit" -- "$dir" |
-	while read mode type tree name
+	while read -r mode type tree name
 	do
 		assert test "$name" = "$dir"
 		assert test "$type" = "tree" -o "$type" = "commit"
 		test "$type" = "commit" && continue  # ignore submodules
-		echo $tree
+		echo "$tree"
 		break
 	done || exit $?
 }
@@ -560,7 +560,7 @@ tree_changed () {
 	then
 		return 0   # weird parents, consider it changed
 	else
-		ptree=$(toptree_for_commit $1) || exit $?
+		ptree=$(toptree_for_commit "$1") || exit $?
 		if test "$ptree" != "$tree"
 		then
 			return 0   # changed
@@ -576,7 +576,7 @@ new_squash_commit () {
 	old="$1"
 	oldsub="$2"
 	newsub="$3"
-	tree=$(toptree_for_commit $newsub) || exit $?
+	tree=$(toptree_for_commit "$newsub") || exit $?
 	if test -n "$old"
 	then
 		squash_msg "$dir" "$oldsub" "$newsub" |
@@ -602,7 +602,7 @@ copy_or_skip () {
 	copycommit=
 	for parent in $newparents
 	do
-		ptree=$(toptree_for_commit $parent) || exit $?
+		ptree=$(toptree_for_commit "$parent") || exit $?
 		test -z "$ptree" && continue
 		if test "$ptree" = "$tree"
 		then
@@ -611,7 +611,7 @@ copy_or_skip () {
 			then
 				# if a previous identical parent was found, check whether
 				# one is already an ancestor of the other
-				mergebase=$(git merge-base $identical $parent)
+				mergebase=$(git merge-base "$identical" "$parent")
 				if test "$identical" = "$mergebase"
 				then
 					# current identical commit is an ancestor of parent
@@ -649,7 +649,7 @@ copy_or_skip () {
 
 	if test -n "$identical" && test -n "$nonidentical"
 	then
-		extras=$(git rev-list --count $identical..$nonidentical)
+		extras=$(git rev-list --count "$identical..$nonidentical")
 		if test "$extras" -ne 0
 		then
 			# we need to preserve history along the other branch
@@ -658,7 +658,7 @@ copy_or_skip () {
 	fi
 	if test -n "$identical" && test -z "$copycommit"
 	then
-		echo $identical
+		echo "$identical"
 	else
 		copy_commit "$rev" "$tree" "$p" || exit $?
 	fi
@@ -713,6 +713,7 @@ process_split_commit () {
 	createcount=$(($createcount + 1))
 	debug "parents: $parents"
 	check_parents "$parents"
+	# shellcheck disable=SC2086
 	newparents=$(cache_get $parents) || exit $?
 	debug "newparents: $newparents"
 
@@ -762,7 +763,7 @@ cmd_add () {
 
 		cmd_add_repository "$@"
 	else
-		say "error: parameters were '$@'"
+		say "error: parameters were '$*'"
 		die "Provide either a commit or a repository and commit."
 	fi
 }
@@ -785,7 +786,7 @@ cmd_add_commit () {
 	rev=$(git rev-parse --verify "$1^{commit}") || exit $?
 
 	debug "Adding $dir as '$rev'..."
-	git read-tree --prefix="$dir" $rev || exit $?
+	git read-tree --prefix="$dir" "$rev" || exit $?
 	git checkout -- "$dir" || exit $?
 	tree=$(git write-tree) || exit $?
 
@@ -804,7 +805,8 @@ cmd_add_commit () {
 			git commit-tree "$tree" $headp -p "$rev") || exit $?
 	else
 		revp=$(peel_committish "$rev") || exit $?
-		commit=$(add_msg "$dir" $headrev "$rev" |
+		# shellcheck disable=SC2086
+		commit=$(add_msg "$dir" "$headrev" "$rev" |
 			git commit-tree "$tree" $headp -p "$revp") || exit $?
 	fi
 	git reset "$commit" || exit $?
@@ -836,13 +838,13 @@ cmd_split () {
 	if test -n "$arg_split_onto"
 	then
 		debug "Reading history for --onto=$arg_split_onto..."
-		git rev-list $arg_split_onto |
-		while read rev
+		git rev-list "$arg_split_onto" |
+		while read -r commit
 		do
 			# the 'onto' history is already just the subdir, so
 			# any parent we find there can be used verbatim
-			debug "cache: $rev"
-			cache_set "$rev" "$rev"
+			debug "cache: $commit"
+			cache_set "$commit" "$commit"
 		done || exit $?
 	fi
 
@@ -851,13 +853,14 @@ cmd_split () {
 	# We can't restrict rev-list to only $dir here, because some of our
 	# parents have the $dir contents the root, and those won't match.
 	# (and rev-list --follow doesn't seem to solve this)
-	grl='git rev-list --topo-order --reverse --parents $rev $unrevs'
-	revmax=$(eval "$grl" | wc -l)
+	# shellcheck disable=SC2086
+	revmax=$(git rev-list --topo-order --reverse --parents $rev $unrevs | wc -l)
 	revcount=0
 	createcount=0
 	extracount=0
-	eval "$grl" |
-	while read rev parents
+	# shellcheck disable=SC2086
+	git rev-list --topo-order --reverse --parents $rev $unrevs |
+	while read -r rev parents
 	do
 		process_split_commit "$rev" "$parents"
 	done || exit $?
@@ -914,7 +917,8 @@ cmd_merge () {
 		then
 			die "Can't squash-merge: '$dir' was never added."
 		fi
-		set $first_split
+		# shellcheck disable=SC2086
+		set -- $first_split
 		old=$1
 		sub=$2
 		if test "$sub" = "$rev"
@@ -932,7 +936,7 @@ cmd_merge () {
 		git merge -Xsubtree="$arg_prefix" \
 			--message="$arg_addmerge_message" "$rev"
 	else
-		git merge -Xsubtree="$arg_prefix" $rev
+		git merge -Xsubtree="$arg_prefix" "$rev"
 	fi
 }
 
@@ -971,7 +975,7 @@ cmd_push () {
 
 		echo "git push using: " "$repository" "$refspec"
 		localrev=$(cmd_split "$localrev_presplit") || die
-		git push "$repository" "$localrev":"refs/heads/$remoteref"
+		git push "$repository" "$localrev:refs/heads/$remoteref"
 	else
 		die "'$dir' must already exist. Try 'git subtree add'."
 	fi
