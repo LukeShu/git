@@ -357,6 +357,7 @@ cache_set () {
 		# If we've stumbled on to a true subtree-commit, go
 		# ahead and mark its entire history as being able to
 		# be used verbatim.
+		local indent=$(($indent + 1))
 		local rev
 		git rev-list "$val" |
 		while read -r rev
@@ -452,11 +453,10 @@ find_latest_squash () {
 	done || exit $?
 }
 
-# Usage: find_existing_splits DIR REV
+# Usage: find_existing_splits REV
 find_existing_splits () {
-	assert test $# = 2
-	local dir="$1"
-	local rev="$2"
+	assert test $# = 1
+	local rev="$1"
 	debug "Looking for prior splits..."
 	local indent=$(($indent + 1))
 
@@ -985,7 +985,7 @@ cmd_split () {
 
 	local unrevs
 	# shellcheck disable=SC2086
-	unrevs="$(find_existing_splits "$dir" "$rev")" || exit $?
+	unrevs="$(find_existing_splits "$rev")" || exit $?
 	debug
 	# shellcheck disable=SC2086
 	debug unrevs: {$unrevs}
