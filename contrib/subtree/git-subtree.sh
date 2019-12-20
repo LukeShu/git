@@ -525,6 +525,70 @@ find_existing_splits () {
 		grep_format="^Add '$dir/' from commit '"
 	fi
 
+	# An 'add' (without '--squash') looks like:
+	#
+	#     ,-mainline
+	#     | ,-subtree
+	#     v v
+	#     H     < the commit created by `git subtree add`
+	#     |\
+	#     M S
+	#     : :
+	#
+	# Where "H" has a commit message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-mainline: $M
+	#   git-subtree-split: $S
+
+	# A 'merge' looks like a regular git merge.  There are no
+	# special markers in the commit message (BTW, it's absolutely
+	# stupid that this doesn't look like 'add' and 'split
+	# --rejoin').
+
+	# A 'split --rejoin' (with or without '--squash') looks like:
+	#
+	#     ,-mainline
+	#     | ,-subtree
+	#     v v
+	#     H     < the commit created by `git subtree split --rejoin`
+	#     |\
+	#     B B'
+	#     | |
+	#     A A'
+	#     | |
+	#     o |
+	#     |\|
+	#     o o
+	#     : :
+	#
+	# Where "H" has a commit message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-mainline: $B
+	#   git-subtree-split: $B'
+
+	# A '--squash' operation looks like:
+	#
+	#     ,-mainline
+	#     | ,-squashed-subtree
+	#     | |  ,-subtree
+	#     v v  v
+	#     H
+	#     |\
+	#     o S' S
+	#     : :  :
+	#
+	# Where "S'" has a commit message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-split: $S
+	#
+	# If the operation was an 'add' or a 'merge', then "H" looks
+	# like a regular commit with no special markers.  If the
+	# operation was a 'split --rejoin', then "H" looks as
+	# described for 'split --rejoin' above.
+
 	local sq=
 	local main=
 	local sub=
