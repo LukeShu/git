@@ -471,7 +471,61 @@ find_existing_splits () {
 	then
 		grep_format="^Add '$dir/' from commit '"
 	fi
+	# An 'add' looks like:
+	#
+	#     ,-mainline
+	#     | ,-subtree
+	#     v v
+	#     H     < the commit created by `git subtree add`
+	#     |\   
+	#     M S
+	#     : :
+	#
+	# Where "H" has a commit message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-mainline: $M
+	#   git-subtree-split: $S
 
+	# A '--rejoin' looks like (BTW, it's absolutely stupid that a
+	# 'merge' doesn't look like this too):
+	# 
+	#     ,-mainline
+	#     | ,-subtree
+	#     v v
+	#     H     < the commit 
+	#     |\
+	#     B B'
+	#     | |
+	#     A A'
+	#     | |
+	#     o |
+	#     |\|   
+	#     o o
+	#     : :
+	#
+	# Where "H" has a commit message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-mainline: $B
+	#   git-subtree-split: $B'
+
+	# A --squash operation looks like
+	#
+	#     ,-mainline
+	#     | ,-squashed-subtree
+	#     | |  ,-subtree
+	#     v v  v
+	#     H
+	#     |\ 
+	#     o S' S
+	#     : :  :
+	#
+	# Where "H" is as described above, and "S'" has a commit
+	# message that says:
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-split: $S
 	local sq=
 	local main=
 	local sub=
@@ -492,14 +546,8 @@ find_existing_splits () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
-			debug "Main is: '$main'"
-			if test -z "$main" -a -n "$sub"
 			then
-				# squash commits refer to a subtree
-				debug "  Squash: $sq from $sub"
-				cache_set "$sq" "$sub"
-			fi
-			if test -n "$main" -a -n "$sub"
+				debug "prior malformed commit: $sq"
 			then
 				if test -z "$main"
 				then
@@ -507,7 +555,7 @@ find_existing_splits () {
 					debug "  git-subtree-split: '$sub'"
 					cache_set "$sq" "$sub"
 				else
-					debug "prior --rejoin: $sq"
+					debug "prior --rejoin or add: $sq"
 					debug "  git-subtree-mainline: '$main'"
 					debug "  git-subtree-split:    '$sub'"
 					cache_set "$main" "$sub"
