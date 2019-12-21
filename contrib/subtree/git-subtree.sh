@@ -41,7 +41,7 @@ m,message=    use the given message as the commit message for the merge commit
 
 PATH=$(git --exec-path):$PATH
 . git-sh-setup
-set -euE
+#set -euE
 
 indent=0
 
@@ -273,7 +273,7 @@ cache_setup () {
 	do
 		debug "hack $rev"
 		echo notree > "$cachedir/$rev"
-	done
+	done || exit $?
 }
 
 # Usage: cache_get [REVS...]
@@ -307,7 +307,7 @@ cache_set_internal () {
 			oldval=$(cat "$cachedir/$key")
 			if test "$oldval" = "$val"
 			then
-				debug "already cached: commit:$key = subtree_commit:$val"
+				debug "  already cached: commit:$key = subtree_commit:$val"
 				cache_set_existed=true
 				return
 			else
@@ -320,6 +320,7 @@ cache_set_internal () {
 	echo "$val" >"$cachedir/$key"
 }
 
+
 # Usage: cache_set COMMIT SUBTREE_COMMIT
 #
 # Store a COMMIT->SUBTREE_COMMIT mapping.  COMMIT may be:
@@ -327,6 +328,7 @@ cache_set_internal () {
 #  - a mainline commit
 #  - a squashed subtree commit
 # mainline commit, or a subtree commit
+cache_set_bailearly=false
 cache_set () {
 	assert test $# = 2
 	local key="$1"
@@ -334,42 +336,62 @@ cache_set () {
 
 	local cache_set_existed=false
 
+	cache_set_internal "$key" "$val"
+
+	if  test "$cache_set_existed" = true || test "$key" = latest_old || test "$key" = latest_old
+	then
+		return
+	fi
+
+	local indent=$((indent + 1))
 	case "$val" in
-	"$key")
-		# If we've stumbled on to a true subtree-commit, go
-		# ahead and mark its entire history as being able to
-		# be used verbatim.
-		local _indent=$indent
-		local rev
-		git rev-list "$key" |
-		while read -r rev
-		do
-			cache_set_internal "$rev" "$rev"
-			if test "$cache_set_existed" = true
-			then
-				break
-			fi
-			local indent=$(($_indent + 1))
-		done || exit $?
+	'counted')
+		:
 		;;
-	notree)
+	'notree')
 		# If we've identified a commit as predating the subtree, go
 		# ahead and mark its entire history as predating the subtree.
-		local _indent=$indent
-		local rev
-		git rev-list "$key" ^ambassador-docs/early-access |
-		while read -r rev
-		do
-			cache_set_internal "$rev" notree
-			if test "$cache_set_existed" = true
-			then
-				break
+		if $cache_set_bailearly
+		then
+			local parents
+			parents=$(git rev-parse "$key^@")
+			if test -n "$parents"; then
+				parents=$(comm -23 \
+					       <(printf '%s\n' $parents|sort -u) \
+					       <(git rev-list ambassador-docs/early-access ambassador-docs/master|sort -u))
 			fi
-			local indent=$(($_indent + 1))
-		done || exit $?
+			local parent
+			for parent in $parents
+			do
+				cache_set "$parent" notree
+			done
+		else
+			git rev-list "$key" ^ambassador-docs/early-access ^ambassador-docs/master |
+			while read -r ancestor
+			do
+				cache_set_internal "$ancestor" notree
+			done || exit $?
+		fi
 		;;
 	*)
-		cache_set_internal "$key" "$val"
+		# If we've identified a subtree-commit, then also
+		# record its ancestors as being subtree commits.
+		if $cache_set_bailearly
+		then
+			local parents
+			parents=$(git rev-parse "$val^@")
+			local parent
+			for parent in $parents
+			do
+				cache_set "$parent" "$parent"
+			done
+		else
+			git rev-list "$key" |
+			while read -r ancestor
+			do
+				cache_set_internal "$ancestor" "$ancestor"
+			done || exit $?
+		fi
 		;;
 	esac
 }
@@ -451,7 +473,6 @@ find_latest_squash () {
 split_process_annotated_commits () {
 	assert test $# = 1
 	local rev="$1"
-	say "Looking for prior annotated commits..."
 	debug "Looking for prior annotated commits..."
 	local indent=$(($indent + 1))
 
@@ -847,6 +868,7 @@ copy_or_skip () {
 		echo "$identical"
 	else
 		copy_commit "$rev" "$tree" "$p" || exit $?
+		split_created=$(($split_created + 1))
 	fi
 }
 
@@ -910,7 +932,7 @@ split_classify_commit () {
 		# It contains the subtree path; presume it is a
 		# mainline commit that contains the subtree.
 		echo 'mainline:tree'
-	elif ! git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null
+	elif git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null
 	then
 		if test -n "$(git ls-tree "$rev" -- content)"
 		then
@@ -922,6 +944,10 @@ split_classify_commit () {
 		# commit; assume it's a subtree-commit.
 		echo 'split'
 	else
+		if test "$rev" = acfb4ed7e0174668cd0c9d808e57613681a2bda7
+		then
+			rev=$rev cachedir=$cachedir urxvt
+		fi
 		echo 'mainline:notree'
 	fi
 }
@@ -931,16 +957,15 @@ split_process_commit () {
 	assert test $# = 1
 	local rev="$1"
 
-	debug "Processing commit: $rev"
-	local indent=$(($indent + 1))
-
 	local cached
 	cached=$(cache_get "$rev") || exit $?
 	if test -n "$cached"
 	then
-		debug "cached: $cached"
 		return
 	fi
+
+	debug "Processing commit: $rev"
+	local indent=$(($indent + 1))
 
 	local parents
 	parents=$(git rev-parse "$rev^@")
@@ -949,6 +974,8 @@ split_process_commit () {
 	do
 		split_process_commit "$parent"
 	done
+
+	debug "processed parents of $rev, processing comit itself..."
 
 	local classification
 	classification=$(split_classify_commit "$rev") || exit $?
@@ -974,8 +1001,6 @@ split_process_commit () {
 		cache_set "$rev" "$newrev"
 		cache_set latest_new "$newrev"
 		cache_set latest_old "$rev"
-
-		split_created=$(($split_created + 1))
 		;;
 	mainline:notree)
 		cache_set "$rev" notree
@@ -1100,7 +1125,9 @@ cmd_split () {
 
 	# This will pre-load the cache with info from commits with
 	# "subtree-XXX: YYY" annotations in the commit message.
+	progress "Looking for prior annotated commits..."
 	split_process_annotated_commits "$rev"
+	progress_nl
 
 	progress 'Counting commits...'
 	local split_max=0
@@ -1108,6 +1135,8 @@ cmd_split () {
 	readonly split_max
 	rm -f -- $(grep -rlx counted "$cachedir")
 	progress_nl
+
+	cache_set_bailearly=true
 
 	local split_processed=0
 	local split_created=0
