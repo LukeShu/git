@@ -268,12 +268,24 @@ cache_setup () {
 		die "Can't create new cachedir: $cachedir"
 	debug "Using cachedir: $cachedir" >&2
 
-	local rev
-	git rev-list ambassador-docs/master ^ambassador-docs/early-access | while read -r rev
-	do
-		debug "hack $rev"
-		echo notree > "$cachedir/$rev"
-	done || exit $?
+	# local rev
+	# git rev-list ambassador-docs/lukeshu/hacky-split ^ambassador-docs/master ^3d83ab552631f7f66629e1692a5608c4a06c8198| while read -r rev
+	# do
+	# 	debug "hack notree $rev"
+	# 	echo notree > "$cachedir/$rev"
+	# done || exit $?
+	debug 'hack ambassador-docs/master'
+	cache_set $(git rev-parse ambassador-docs/master) $(git rev-parse ambassador-docs/master)
+	debug 'hack checkpoint-aa'
+	cache_set_bailearly=true
+	cache_set $(git rev-parse lukeshu/checkpoint-aa-pre-split) $(git rev-parse lukeshu/checkpoint-aa-post-split)
+	cache_set $(git rev-parse lukeshu/checkpoint-aa-rejoin)    $(git rev-parse lukeshu/checkpoint-aa-post-split)
+	cache_set $(git rev-parse lukeshu/checkpoint-aa-rejoin-pr) $(git rev-parse lukeshu/checkpoint-aa-post-split)
+	debug 'hack idk'
+	cache_set e6e28c59e56132ea43124065024b9d9cd1a7ba32 96aef88027d97a1b01a4281d27359f2e46a5f464
+	cache_set 2141f9067811332eeb278cf3bf7c0f38c956667c 7e0f2c8ffa32399568cc1c7dbda1f246e29eafb8
+	cache_set_bailearly=false
+	debug 'end cache_setup'
 }
 
 # Usage: cache_get [REVS...]
@@ -366,7 +378,7 @@ cache_set () {
 				cache_set "$parent" notree
 			done
 		else
-			git rev-list "$key" ^ambassador-docs/early-access ^ambassador-docs/master |
+			git rev-list "$key^@" ^ambassador-docs/early-access ^ambassador-docs/master |
 			while read -r ancestor
 			do
 				cache_set_internal "$ancestor" notree
@@ -386,7 +398,7 @@ cache_set () {
 				cache_set "$parent" "$parent"
 			done
 		else
-			git rev-list "$key" |
+			git rev-list "$val^@" |
 			while read -r ancestor
 			do
 				cache_set_internal "$ancestor" "$ancestor"
@@ -865,10 +877,9 @@ copy_or_skip () {
 	fi
 	if test -n "$identical" && test -z "$copycommit"
 	then
-		echo "$identical"
+		echo "skip $identical"
 	else
 		copy_commit "$rev" "$tree" "$p" || exit $?
-		split_created=$(($split_created + 1))
 	fi
 }
 
@@ -892,6 +903,64 @@ ensure_valid_ref_format () {
 		die "'$1' does not look like a ref"
 }
 
+# Usage: split_list_relevant_parents REV
+split_list_relevant_parents () {
+	assert test $# = 1
+	local rev="$1"
+
+	local parents
+	parents=$(git rev-parse "$rev^@")
+
+	# If  (1.a) this is a simple 2-way merge,
+	# and (1.b) one of the parents has the subtree,
+	# and (1.c) the other parent does hot have the subtree,
+	# then:
+	#
+	#  it is reasonably safe to assume that this a subtree-merge
+	#  commit.
+	#
+	# If  (2.a) the subtree-directory in mainline parent is identical to in the merge,
+	# but (2.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is for a
+	#  *different subtree* than the subtree-directory that we're
+	#  splitting, and that we should ignore the subtree parent
+	set -- $parents
+	if test $# = 2
+	then
+		local p1_subtree p2_subtree
+		p1_subtree=$(subtree_for_commit "$1")
+		p2_subtree=$(subtree_for_commit "$2")
+		local mainline mainline_subtree subtree
+		if test -n "$p1_subtree" && test -z "$p2_subtree"
+		then
+			mainline=$1
+			mainline_subtree=$p1_subtree
+			subtree=$2
+			
+		elif test -z "$p1_subtree" && test -n "$p2_subtree"
+		then
+			mainline=$2
+			mainline_subtree=$p2_subtree
+			subtree=$1
+		fi
+		# OK, condition (1) is satisfied
+		if test -n "$mainline"
+		then
+			local merge_toptree
+			merge_subtree=$(subtree_for_commit "$rev")
+			subtree_toptree=$(toptree_for_commit "$subtree")
+			if test "$merge_subtree" = "$mainline_subtree" && test "$merge_subtree" != "$subtree_toptree"
+			then
+				# OK, condition (2) is satisfied
+				echo $mainline
+			fi
+		fi
+	fi
+	echo $parents
+}
+
 # Usage: split_count_commits REV
 #
 # Increments the `split_max` variable, stores the value "counted" in
@@ -912,7 +981,7 @@ split_count_commits () {
 	progress "Counting commits... $split_max"
 
 	local parents
-	parents=$(git rev-parse "$rev^@")
+	parents=$(split_list_relevant_parents "$rev")
 	local parent
 	for parent in $parents
 	do
@@ -968,7 +1037,7 @@ split_process_commit () {
 	local indent=$(($indent + 1))
 
 	local parents
-	parents=$(git rev-parse "$rev^@")
+	parents=$(split_list_relevant_parents "$rev")
 	local parent
 	for parent in $parents
 	do
@@ -987,7 +1056,7 @@ split_process_commit () {
 
 		local newparents
 		# shellcheck disable=SC2086
-		newparents=$(cache_get $parents | grep -vx notree) || exit $?
+		newparents=$(cache_get $parents | grep -vx notree)
 		# shellcheck disable=SC2086
 		debug newparents: $newparents
 
@@ -995,7 +1064,15 @@ split_process_commit () {
 		tree=$(subtree_for_commit "$rev") || exit $?
 
 		local newrev
+		split_created_from=$(($split_created_from + 1))
 		newrev=$(copy_or_skip "$rev" "$tree" "$newparents") || exit $?
+		set -- $newrev
+		if test "$1" = skip
+		then
+			newrev=$2
+		else
+			split_created_to=$(($split_created_to + 1))
+		fi
 
 		debug "newrev: $newrev"
 		cache_set "$rev" "$newrev"
@@ -1014,7 +1091,7 @@ split_process_commit () {
 	esac
 
 	split_processed=$(($split_processed + 1))
-	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created})"
+	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created_from}->${split_created_to})"
 }
 
 # Usage: cmd_add REV
@@ -1139,8 +1216,9 @@ cmd_split () {
 	cache_set_bailearly=true
 
 	local split_processed=0
-	local split_created=0
-	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created})"
+	local split_created_from=0
+	local split_created_to=0
+	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created_from}->${split_created_to})"
 	split_process_commit "$rev"
 	progress_nl
 
