@@ -1005,12 +1005,6 @@ split_classify_commit () {
 		echo 'mainline:tree'
 	elif git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null
 	then
-		if test -n "$(git ls-tree "$rev" -- content)"
-		then
-			# hack
-			echo 'mainline:notree'
-			return
-		fi
 		# It has an ancestor that is known to be a subtree
 		# commit; assume it's a subtree-commit.
 		echo 'split'
