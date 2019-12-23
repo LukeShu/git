@@ -345,25 +345,7 @@ cache_set () {
 		:
 		;;
 	'notree')
-		return
-		# If we've identified a commit as predating the subtree, go
-		# ahead and mark its entire history as predating the subtree.
-		if $cache_set_bailearly
-		then
-			local parents
-			parents=$(git rev-parse "$key^@")
-			local parent
-			for parent in $parents
-			do
-				cache_set "$parent" notree
-			done
-		else
-			git rev-list "$key^@" |
-			while read -r ancestor
-			do
-				cache_set_internal "$ancestor" notree
-			done || exit $?
-		fi
+		:
 		;;
 	*)
 		# If we've identified a subtree-commit, then also
