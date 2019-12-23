@@ -267,25 +267,6 @@ cache_setup () {
 	mkdir -p "$cachedir" ||
 		die "Can't create new cachedir: $cachedir"
 	debug "Using cachedir: $cachedir" >&2
-
-	# local rev
-	# git rev-list ambassador-docs/lukeshu/hacky-split ^ambassador-docs/master ^3d83ab552631f7f66629e1692a5608c4a06c8198| while read -r rev
-	# do
-	# 	debug "hack notree $rev"
-	# 	echo notree > "$cachedir/$rev"
-	# done || exit $?
-	debug 'hack ambassador-docs/master'
-	cache_set $(git rev-parse ambassador-docs/master) $(git rev-parse ambassador-docs/master)
-	debug 'hack checkpoint-aa'
-	cache_set_bailearly=true
-	cache_set $(git rev-parse lukeshu/checkpoint-aa-pre-split) $(git rev-parse lukeshu/checkpoint-aa-post-split)
-	cache_set $(git rev-parse lukeshu/checkpoint-aa-rejoin)    $(git rev-parse lukeshu/checkpoint-aa-post-split)
-	cache_set $(git rev-parse lukeshu/checkpoint-aa-rejoin-pr) $(git rev-parse lukeshu/checkpoint-aa-post-split)
-	debug 'hack idk'
-	cache_set e6e28c59e56132ea43124065024b9d9cd1a7ba32 96aef88027d97a1b01a4281d27359f2e46a5f464
-	cache_set 2141f9067811332eeb278cf3bf7c0f38c956667c 7e0f2c8ffa32399568cc1c7dbda1f246e29eafb8
-	cache_set_bailearly=false
-	debug 'end cache_setup'
 }
 
 # Usage: cache_get [REVS...]
@@ -322,6 +303,9 @@ cache_set_internal () {
 				debug "  already cached: commit:$key = subtree_commit:$val"
 				cache_set_existed=true
 				return
+			elif test "$oldval" = counted
+			then
+				debug "  overwriting existing subtree_commit:counted"
 			else
 				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 			fi
@@ -367,18 +351,13 @@ cache_set () {
 		then
 			local parents
 			parents=$(git rev-parse "$key^@")
-			if test -n "$parents"; then
-				parents=$(comm -23 \
-					       <(printf '%s\n' $parents|sort -u) \
-					       <(git rev-list ambassador-docs/early-access ambassador-docs/master|sort -u))
-			fi
 			local parent
 			for parent in $parents
 			do
 				cache_set "$parent" notree
 			done
 		else
-			git rev-list "$key^@" ^ambassador-docs/early-access ^ambassador-docs/master |
+			git rev-list "$key^@" |
 			while read -r ancestor
 			do
 				cache_set_internal "$ancestor" notree
@@ -505,7 +484,7 @@ split_process_annotated_commits () {
 	#     | ,-subtree
 	#     v v
 	#     H     < the commit created by `git subtree add`
-	#     |\   
+	#     |\
 	#     M S
 	#     : :
 	#
@@ -517,18 +496,18 @@ split_process_annotated_commits () {
 
 	# A '--rejoin' looks like (BTW, it's absolutely stupid that a
 	# 'merge' doesn't look like this too):
-	# 
+	#
 	#     ,-mainline
 	#     | ,-subtree
 	#     v v
-	#     H     < the commit 
+	#     H     < the commit
 	#     |\
 	#     B B'
 	#     | |
 	#     A A'
 	#     | |
 	#     o |
-	#     |\|   
+	#     |\|
 	#     o o
 	#     : :
 	#
@@ -545,7 +524,7 @@ split_process_annotated_commits () {
 	#     | |  ,-subtree
 	#     v v  v
 	#     H
-	#     |\ 
+	#     |\
 	#     o S' S
 	#     : :  :
 	#
@@ -919,13 +898,24 @@ split_list_relevant_parents () {
 	#  it is reasonably safe to assume that this a subtree-merge
 	#  commit.
 	#
-	# If  (2.a) the subtree-directory in mainline parent is identical to in the merge,
+	# If (1) is satisfied,
+	# and (2.a) the subtree-directory in mainline parent is identical to in the merge,
 	# but (2.b) the subtree parent is not identical to the subtree-directory in the merge,
 	# then:
 	#
 	#  it is reasonably safe to assume that the merge is for a
 	#  *different subtree* than the subtree-directory that we're
-	#  splitting, and that we should ignore the subtree parent
+	#  splitting, and that we should ignore the subtree parent.
+	#
+	# On the other hand,
+	# if (1) is satisfied,
+	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
+	# and (3.b) the subtree parent is identical to the subtree-directory in the merge,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is
+	#  specifically a --rejoin, and we can avoid crawling the
+	#  history more.
 	set -- $parents
 	if test $# = 2
 	then
@@ -938,23 +928,35 @@ split_list_relevant_parents () {
 			mainline=$1
 			mainline_subtree=$p1_subtree
 			subtree=$2
-			
+
 		elif test -z "$p1_subtree" && test -n "$p2_subtree"
 		then
 			mainline=$2
 			mainline_subtree=$p2_subtree
 			subtree=$1
 		fi
-		# OK, condition (1) is satisfied
 		if test -n "$mainline"
 		then
-			local merge_toptree
+			# OK, condition (1) is satisfied
+			debug "commit $rev is a subtree-merge"
+			local merge_subtree
 			merge_subtree=$(subtree_for_commit "$rev")
-			subtree_toptree=$(toptree_for_commit "$subtree")
-			if test "$merge_subtree" = "$mainline_subtree" && test "$merge_subtree" != "$subtree_toptree"
+			if test "$merge_subtree" = "$mainline_subtree"
 			then
-				# OK, condition (2) is satisfied
-				echo $mainline
+				local subtree_toptree
+				subtree_toptree=$(toptree_for_commit "$subtree")
+				if test "$merge_subtree" != "$subtree_toptree"
+				then
+					# OK, condition (2) is satisfied
+					debug "commit $rev is a merge for a different subtree"
+					echo $mainline
+					return
+				else
+					# OK, condition (3) is satisfied
+					debug "commit $rev is is a --rejoin merge"
+					cache_set "$rev" "$subtree"
+					return
+				fi
 			fi
 		fi
 	fi
@@ -968,7 +970,7 @@ split_list_relevant_parents () {
 split_count_commits () {
 	assert test $# = 1
 	local rev="$1"
-	
+
 	local cached
 	cached=$(cache_get "$rev") || exit $?
 	if test -n "$cached"
@@ -981,7 +983,7 @@ split_count_commits () {
 	progress "Counting commits... $split_max"
 
 	local parents
-	parents=$(split_list_relevant_parents "$rev")
+	parents=$(split_list_relevant_parents "$rev") || exit $?
 	local parent
 	for parent in $parents
 	do
@@ -1013,10 +1015,6 @@ split_classify_commit () {
 		# commit; assume it's a subtree-commit.
 		echo 'split'
 	else
-		if test "$rev" = acfb4ed7e0174668cd0c9d808e57613681a2bda7
-		then
-			rev=$rev cachedir=$cachedir urxvt
-		fi
 		echo 'mainline:notree'
 	fi
 }
@@ -1037,7 +1035,7 @@ split_process_commit () {
 	local indent=$(($indent + 1))
 
 	local parents
-	parents=$(split_list_relevant_parents "$rev")
+	parents=$(split_list_relevant_parents "$rev") || exit $?
 	local parent
 	for parent in $parents
 	do
@@ -1206,14 +1204,14 @@ cmd_split () {
 	split_process_annotated_commits "$rev"
 	progress_nl
 
+	cache_set_bailearly=true
+
 	progress 'Counting commits...'
 	local split_max=0
 	split_count_commits "$rev"
 	readonly split_max
 	rm -f -- $(grep -rlx counted "$cachedir")
 	progress_nl
-
-	cache_set_bailearly=true
 
 	local split_processed=0
 	local split_created_from=0
