@@ -345,6 +345,7 @@ cache_set () {
 		:
 		;;
 	'notree')
+		return
 		# If we've identified a commit as predating the subtree, go
 		# ahead and mark its entire history as predating the subtree.
 		if $cache_set_bailearly
@@ -1036,7 +1037,7 @@ split_process_commit () {
 		split_process_commit "$parent"
 	done
 
-	debug "processed parents of $rev, processing comit itself..."
+	debug "processed parents of $rev, processing commit itself..."
 
 	local classification
 	classification=$(split_classify_commit "$rev") || exit $?
