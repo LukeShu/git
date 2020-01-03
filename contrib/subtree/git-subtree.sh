@@ -577,6 +577,7 @@ split_process_annotated_commits () {
 			sub=
 			;;
 		esac
+		cache_set_bailearly=true
 	done || exit $?
 }
 
