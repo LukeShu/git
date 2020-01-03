@@ -1312,7 +1312,7 @@ cmd_push () {
 		local refspec=${2#+}
 		local remoteref=${refspec#*:}
 		local localrevname_presplit
-		if test "remoteref" = "$refspec"
+		if test "$remoteref" = "$refspec"
 		then
 			localrevname_presplit=HEAD
 		else
