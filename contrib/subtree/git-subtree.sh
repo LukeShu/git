@@ -861,7 +861,7 @@ ensure_clean () {
 # Usage: ensure_valid_ref_format REF
 ensure_valid_ref_format () {
 	assert test $# = 1
-	git check-ref-format "refs/heads/$1" ||
+	git check-ref-format "$1" ||
 		die "'$1' does not look like a ref"
 }
 
@@ -1090,7 +1090,7 @@ cmd_add () {
 		# specified directory.  Allowing a refspec might be
 		# misleading because we won't do anything with any other
 		# branches fetched via the refspec.
-		ensure_valid_ref_format "$2"
+		ensure_valid_ref_format "refs/heads/$2"
 
 		cmd_add_repository "$@"
 	else
@@ -1293,7 +1293,7 @@ cmd_pull () {
 		die "You must provide <repository> <ref>"
 	fi
 	ensure_clean
-	ensure_valid_ref_format "$2"
+	ensure_valid_ref_format "refs/heads/$2"
 	debug
 
 	git fetch "$@" || exit $?
@@ -1318,6 +1318,10 @@ cmd_push () {
 		else
 			localrevname_presplit=${refspec%%:*}
 		fi
+		case "$remoteref" in
+		refs/*) :;;
+		*) remoteref="refs/heads/$remoteref";;
+		esac
 		ensure_valid_ref_format "$remoteref"
 		local localrev_presplit
 		localrev_presplit=$(git rev-parse -q --verify "$localrevname_presplit^{commit}") ||
@@ -1327,7 +1331,7 @@ cmd_push () {
 		echo "git push using: " "$repository" "$refspec"
 		local localrev
 		localrev=$(cmd_split "$localrev_presplit") || die
-		git push "$repository" "$localrev:refs/heads/$remoteref"
+		git push "$repository" "$localrev:$remoteref"
 	else
 		die "'$dir' must already exist. Try 'git subtree add'."
 	fi
