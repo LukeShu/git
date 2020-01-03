@@ -556,7 +556,7 @@ split_process_annotated_commits () {
 						debug "  git-subtree-mainline: '$main'"
 						debug "  git-subtree-split:    '$sub'"
 						cache_set "$main" notree
-					elif test "$mainline_tree" = "split_tree"
+					elif test "$mainline_tree" = "$split_tree"
 					then
 						debug "prior --rejoin: $sq"
 						debug "  git-subtree-mainline: '$main'"
