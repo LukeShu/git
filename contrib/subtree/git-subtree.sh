@@ -17,12 +17,12 @@
 # - extracount
 
 OPTS_SPEC="\
-git subtree add   --prefix=<prefix> <commit>
-git subtree add   --prefix=<prefix> <repository> <ref>
-git subtree merge --prefix=<prefix> <commit>
-git subtree pull  --prefix=<prefix> <repository> <ref>
+git subtree add   --prefix=<prefix> <local-commit-ish>
+git subtree add   --prefix=<prefix> <repository> <remote-ref>
+git subtree merge --prefix=<prefix> <local-commit-ish>
+git subtree pull  --prefix=<prefix> <repository> <remote-ref>
 git subtree push  --prefix=<prefix> <repository> <refspec>
-git subtree split --prefix=<prefix> [<commit>]
+git subtree split --prefix=<prefix> [<commit-ish>]
 --
 h,help        show the help
 q             quiet
@@ -183,7 +183,7 @@ main () {
 			;;
 		--onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_onto=$(git rev-parse -q --verify "$1^{commit}") ||
+			arg_split_onto=$(peel_committish "$1" 2>/dev/null) ||
 				die "'$1' does not refer to a commit"
 			shift
 			;;
@@ -334,10 +334,15 @@ cache_set () {
 
 	cache_set_internal "$key" "$val"
 
-	if  test "$cache_set_existed" = true || test "$key" = latest_old || test "$key" = latest_old
+	if test "$cache_set_existed" = true
 	then
 		return
 	fi
+	case "$key" in
+	latest_old|latest_new)
+		return
+		;;
+	esac
 
 	local indent=$((indent + 1))
 	case "$val" in
@@ -368,17 +373,6 @@ cache_set () {
 		fi
 		;;
 	esac
-}
-
-# Usage: rev_exists REV
-rev_exists () {
-	assert test $# = 1
-	if git rev-parse "$1" >/dev/null 2>&1
-	then
-		return 0
-	else
-		return 1
-	fi
 }
 
 # Usage: find_latest_squash REVS...
@@ -610,13 +604,11 @@ copy_commit () {
 	) || die "Can't copy commit $1"
 }
 
-# Usage: add_msg
+# Usage: add_msg LATEST_OLD LATEST_NEW
 add_msg () {
-	assert test $# = 0
-
-	local latest_old latest_new
-	latest_old=$(cache_get latest_old) || exit $?
-	latest_new=$(cache_get latest_new) || exit $?
+	assert test $# = 2
+	local latest_old=$1
+	local latest_new=$2
 
 	local commit_message
 	if test -n "$arg_addmerge_message"
@@ -634,12 +626,10 @@ add_msg () {
 	EOF
 }
 
-# Usage: add_squashed_msg
+# Usage: add_squashed_msg LATEST_NEW
 add_squashed_msg () {
-	assert test $# = 0
-
-	local latest_new
-	latest_new=$(cache_get latest_new) || exit $?
+	assert test $# = 1
+	local latest_new=$1
 
 	if test -n "$arg_addmerge_message"
 	then
@@ -1079,7 +1069,7 @@ cmd_add () {
 
 	if test $# -eq 1
 	then
-		git rev-parse -q --verify "$1^{commit}" >/dev/null ||
+		peel_committish "$1" >/dev/null 2>&1 ||
 			die "'$1' does not refer to a commit"
 
 		cmd_add_commit "$@"
@@ -1115,7 +1105,7 @@ cmd_add_commit () {
 	# The rev has already been validated by cmd_add(), we just
 	# need to normalize it.
 	assert test $# = 1
-	rev=$(git rev-parse --verify "$1^{commit}") || exit $?
+	rev=$(peel_committish "$1") || exit $?
 
 	debug "Adding $dir as '$rev'..."
 	git read-tree --prefix="$dir" "$rev" || exit $?
@@ -1130,14 +1120,11 @@ cmd_add_commit () {
 		headp=
 	fi
 
-	cache_set latest_new "$rev"
-	cache_set latest_old "$headrev"
-
 	if test -n "$arg_addmerge_squash"
 	then
 		rev=$(new_squash_commit "" "" "$rev") || exit $?
 		# shellcheck disable=SC2086
-		commit=$(add_squashed_msg "$rev" "$dir" |
+		commit=$(add_squashed_msg "$rev" |
 			git commit-tree "$tree" $headp -p "$rev") || exit $?
 	else
 		revp=$(peel_committish "$rev") || exit $?
@@ -1158,7 +1145,7 @@ cmd_split () {
 		rev=$(git rev-parse HEAD)
 		;;
 	1)
-		rev=$(git rev-parse -q --verify "$1^{commit}") ||
+		rev=$(peel_committish 2>/dev/null) ||
 			die "'$1' does not refer to a commit"
 		;;
 	*)
@@ -1188,7 +1175,6 @@ cmd_split () {
 	local split_max=0
 	split_count_commits "$rev"
 	readonly split_max
-	rm -f -- $(grep -rlx counted "$cachedir")
 	progress_nl
 
 	local split_processed=0
@@ -1224,7 +1210,7 @@ cmd_split () {
 	if test -n "$arg_split_branch"
 	then
 		local action
-		if rev_exists "refs/heads/$arg_split_branch"
+		if git rev-parse "refs/heads/$arg_split_branch" >/dev/null 2>&1
 		then
 			if ! git merge-base --is-ancestor "$arg_split_branch" "$latest_new"
 			then
@@ -1247,7 +1233,7 @@ cmd_merge () {
 	test $# -eq 1 ||
 		die "You must provide exactly one revision.  Got: '$*'"
 	local rev
-	rev=$(git rev-parse -q --verify "$1^{commit}") ||
+	rev=$(peel_committish "$1" 2>/dev/null) ||
 		die "'$1' does not refer to a commit"
 	debug "rev: {$rev}"
 	debug
@@ -1310,22 +1296,25 @@ cmd_push () {
 	if test -e "$dir"
 	then
 		local repository=$1
-		local refspec=${2#+}
-		local remoteref=${refspec#*:}
-		local localrevname_presplit
-		if test "$remoteref" = "$refspec"
-		then
+		local refspec=${2#+} # XXX: git style doesn't like '#'
+		local remoteref localrevname_presplit
+		case "$refspec" in
+		*:*)
+			remoteref=${refspec##*:} # XXX: git style doesn't like '##'
+			localrevname_presplit=${refspec%:*} # XXX: git style doesn't like '%'
+			;;
+		*)
 			localrevname_presplit=HEAD
-		else
-			localrevname_presplit=${refspec%%:*}
-		fi
+			remoteref=$refspec
+			;;
+		esac
 		case "$remoteref" in
 		refs/*) :;;
 		*) remoteref="refs/heads/$remoteref";;
 		esac
 		ensure_valid_ref_format "$remoteref"
 		local localrev_presplit
-		localrev_presplit=$(git rev-parse -q --verify "$localrevname_presplit^{commit}") ||
+		localrev_presplit=$(peel_committish "$localrevname_presplit" 2>/dev/null) ||
 			die "'$localrevname_presplit' does not refer to a commit"
 		debug
 
