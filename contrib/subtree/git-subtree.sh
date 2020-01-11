@@ -1145,7 +1145,7 @@ cmd_split () {
 		rev=$(git rev-parse HEAD)
 		;;
 	1)
-		rev=$(peel_committish 2>/dev/null) ||
+		rev=$(peel_committish "$1" 2>/dev/null) ||
 			die "'$1' does not refer to a commit"
 		;;
 	*)
@@ -1295,6 +1295,7 @@ cmd_push () {
 	fi
 	if test -e "$dir"
 	then
+		# Parse arguments
 		local repository=$1
 		local refspec=${2#+} # XXX: git style doesn't like '#'
 		local remoteref localrevname_presplit
@@ -1313,11 +1314,14 @@ cmd_push () {
 		*) remoteref="refs/heads/$remoteref";;
 		esac
 		ensure_valid_ref_format "$remoteref"
+
+		# Resolve arguments
 		local localrev_presplit
 		localrev_presplit=$(peel_committish "$localrevname_presplit" 2>/dev/null) ||
 			die "'$localrevname_presplit' does not refer to a commit"
 		debug
 
+		# Take action
 		echo "git push using: " "$repository" "$refspec"
 		local localrev
 		localrev=$(cmd_split "$localrev_presplit") || die
