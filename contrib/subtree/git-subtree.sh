@@ -399,7 +399,7 @@ cache_set_internal () {
 		fi
 		if $split_started && test "$(attr_get "$key")" = redo && test "$(cache_get "$val")" != "$val"
 		then
-			die "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
+			die "(while redoing ${split_redoing}) commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
 		fi
 		if test "$val" != counted
 		then
@@ -1142,6 +1142,16 @@ split_process_commit () {
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
+	if test "$(attr_get "$rev")" = redo
+	then
+		debug "(redoing previous split)"
+		if test -z "$split_redoing"
+		then
+			local split_redoing=$rev
+		fi
+	else
+		local split_redoing=''
+	fi
 
 	local parents
 	parents=$(split_list_relevant_parents "$rev") || exit $?
@@ -1320,6 +1330,7 @@ cmd_split () {
 	split_process_annotated_commits "$rev"
 	progress_nl
 
+	progress "De-normalizing cache of split commits..."
 	redo_parents=()
 	for file in "$cachedir"/*
 	do
@@ -1360,6 +1371,7 @@ cmd_split () {
 	local split_processed=0
 	local split_created_from=0
 	local split_created_to=0
+	local split_redoing=''
 	progress "Processing commits... ${split_processed}/${split_max} (created: ${split_created_from}->${split_created_to})"
 	split_process_commit "$rev"
 	progress_nl
