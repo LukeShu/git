@@ -39,7 +39,9 @@ fi
 #    + dir (readonly)
 #  - misc:
 #    + cachedir (readonly)
+#    + attrdir (readonly)
 #    + indent (mutable, kinda)
+#    + split_started (mutable)
 
 OPTS_SPEC="\
 git subtree add   --prefix=<prefix> <commit>
@@ -314,13 +316,17 @@ cache_setup () {
 	then
 		return
 	fi
+	split_started=false # global
 	cachedir="$GIT_DIR/subtree-cache/$$" # global
 	readonly cachedir
-	rm -rf "$cachedir" ||
-		die "Can't delete old cachedir: $cachedir"
-	mkdir -p "$cachedir" ||
-		die "Can't create new cachedir: $cachedir"
-	debug "Using cachedir: $cachedir" >&2
+	attrdir="$GIT_DIR/subtree-attr/$$" # global
+	readonly attrdir
+	rm -rf "$cachedir" "$attrdir"||
+		die "Can't delete old dirs: $cachedir $attrdir"
+	mkdir -p "$cachedir" "$attrdir" ||
+		die "Can't create new dirs: $cachedir $attrdir"
+	debug "Using cachedir: $cachedir"
+	debug "Using attrdir: $attrdir"
 }
 
 # Usage: cache_get [REVS...]
@@ -334,6 +340,31 @@ cache_get () {
 			cat "$cachedir/$oldrev"
 		fi
 	done
+}
+
+# Usage: attr_get [REVS...]
+attr_get () {
+	local rev
+	for rev in "$@"
+	do
+		if test -r "$attrdir/$rev"
+		then
+			cat "$attrdir/$rev"
+		fi
+	done
+}
+
+# Usage: attr_set_internal COMMIT SUBTREE_COMMIT
+attr_set_internal () {
+	assert test $# = 2
+	local key="$1"
+	local val="$2"
+	debug "setting commit:$key += attr:$val"
+	if test -r "$attrdir/$key" && grep -qFx "$val" "$attrdir/$key"
+	then
+		return
+	fi
+	echo "$val" >> "$attrdir/$key"
 }
 
 # Usage: cache_set_internal COMMIT SUBTREE_COMMIT
@@ -365,6 +396,10 @@ cache_set_internal () {
 			else
 				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 			fi
+		fi
+		if $split_started && test "$(attr_get "$key")" = redo && test "$(cache_get "$val")" != "$val"
+		then
+			die "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$(cache_get "$val")"
 		fi
 		if test "$val" != counted
 		then
@@ -414,6 +449,14 @@ cache_set () {
 		:
 		;;
 	*)
+		if test "$key" != "$val" && ! $split_started
+		then
+			git rev-list "$key^@" |
+			while read -r ancestor
+			do
+				attr_set_internal "$ancestor" redo
+			done || exit $?
+		fi
 		# If we've identified a subtree-commit, then also
 		# record its ancestors as being subtree commits.
 		if $cache_set_bailearly
@@ -1294,6 +1337,7 @@ cmd_split () {
 	grep -rlx counted "$cachedir"|grep -v '/subtree$'|xargs -d '\n' rm -f --
 	progress_nl
 
+	split_started=true # global
 	local split_processed=0
 	local split_created_from=0
 	local split_created_to=0
