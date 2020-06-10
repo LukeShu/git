@@ -342,16 +342,12 @@ cache_get () {
 	done
 }
 
-# Usage: attr_get [REVS...]
-attr_get () {
-	local rev
-	for rev in "$@"
-	do
-		if test -r "$attrdir/$rev"
-		then
-			cat "$attrdir/$rev"
-		fi
-	done
+# Usage: has_attr REV ATTR
+has_attr () {
+	assert test $# = 2
+	local rev="$1"
+	local attr="$2"
+	test -r "$attrdir/$rev" && grep -qFx "$attr" "$attrdir/$rev"
 }
 
 # Usage: attr_set_internal COMMIT SUBTREE_COMMIT
@@ -360,10 +356,6 @@ attr_set_internal () {
 	local key="$1"
 	local val="$2"
 	debug "setting commit:$key += attr:$val"
-	if test -r "$attrdir/$key" && grep -qFx "$val" "$attrdir/$key"
-	then
-		return
-	fi
 	echo "$val" >> "$attrdir/$key"
 }
 
@@ -397,7 +389,7 @@ cache_set_internal () {
 				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 			fi
 		fi
-		if $split_started && test "$(attr_get "$key")" = redo && test "$(cache_get "$val")" != "$val"
+		if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
 		then
 			die "(while redoing ${split_redoing}) commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
 		fi
@@ -1142,7 +1134,7 @@ split_process_commit () {
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
-	if test "$(attr_get "$rev")" = redo
+	if has_attr "$rev" redo
 	then
 		debug "(redoing previous split)"
 		if test -z "$split_redoing"
