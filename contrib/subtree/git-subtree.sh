@@ -67,7 +67,8 @@ progress () {
 }
 
 progress_nl () {
-	if test -z "$GIT_QUIET" && test -z "$arg_debug"; then
+	if test -z "$GIT_QUIET" && test -z "$arg_debug"
+	then
 		printf "\n" "$*" >&2
 	fi
 }
@@ -324,6 +325,13 @@ cache_set_internal () {
 #  - a mainline commit
 #  - a squashed subtree commit
 # mainline commit, or a subtree commit
+#
+# The global $cache_set_bailearly variable should not affect behavior;
+# but affect performance.  cache_set_bailearly=false is faster
+# per-commit, but keep processing all ancestors, even if they've
+# already been processed.  cache_set_bailearly=true is slower
+# per-commit, but can avoid doing superfluous work processing commits
+# that have already been processed.
 cache_set_bailearly=false
 cache_set () {
 	assert test $# = 2
