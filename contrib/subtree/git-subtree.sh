@@ -399,7 +399,7 @@ cache_set_internal () {
 		fi
 		if $split_started && test "$(attr_get "$key")" = redo && test "$(cache_get "$val")" != "$val"
 		then
-			die "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$(cache_get "$val")"
+			die "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
 		fi
 		if test "$val" != counted
 		then
@@ -449,14 +449,6 @@ cache_set () {
 		:
 		;;
 	*)
-		if test "$key" != "$val" && test "$key" != latest_old && test "$key" != latest_new && ! $split_started
-		then
-			git rev-list "$key^@" |
-			while read -r ancestor
-			do
-				attr_set_internal "$ancestor" redo
-			done || exit $?
-		fi
 		# If we've identified a subtree-commit, then also
 		# record its ancestors as being subtree commits.
 		if $cache_set_bailearly
@@ -1327,6 +1319,33 @@ cmd_split () {
 	progress "Looking for prior annotated commits..."
 	split_process_annotated_commits "$rev"
 	progress_nl
+
+	redo_parents=()
+	for file in "$cachedir"/*
+	do
+		key="${file##*/}"
+		case "$key" in
+		latest_old|latest_new|subtree|'*')
+			:
+			;;
+		*)
+			if test "$(cache_get "$key")" != "$key"
+			then
+				redo_parents+=("$key")
+			fi
+			;;
+		esac
+	done
+	if test "${#redo_parents[@]}" -gt 0
+	then
+		git rev-list "${redo_parents[@]}" | while read -r ancestor
+		do
+			if test -z "$(cache_get "$ancestor")"
+			then
+				attr_set_internal "$ancestor" redo
+			fi
+		done || exit $?
+	fi
 
 	cache_set_bailearly=true
 
