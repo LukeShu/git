@@ -410,14 +410,6 @@ cache_set_internal () {
 #  - a mainline commit
 #  - a squashed subtree commit
 # mainline commit, or a subtree commit
-#
-# The global $cache_set_bailearly variable should not affect behavior;
-# but affect performance.  cache_set_bailearly=false is faster
-# per-commit, but keep processing all ancestors, even if they've
-# already been processed.  cache_set_bailearly=true is slower
-# per-commit, but can avoid doing superfluous work processing commits
-# that have already been processed.
-cache_set_bailearly=false
 cache_set () {
 	assert test $# = 2
 	local key="$1"
@@ -442,8 +434,10 @@ cache_set () {
 		;;
 	*)
 		# If we've identified a subtree-commit, then also
-		# record its ancestors as being subtree commits.
-		if $cache_set_bailearly
+		# record its ancestors as being subtree commits.  If
+		# we haven't started the split yet, then hold off for
+		# now; we'll do this in a big batch before starting.
+		if $split_started
 		then
 			local parents
 			parents=$(git rev-parse "$val^@")
@@ -452,12 +446,6 @@ cache_set () {
 			do
 				cache_set "$parent" "$parent"
 			done
-		else
-			git rev-list "$val^@" |
-			while read -r ancestor
-			do
-				cache_set_internal "$ancestor" "$ancestor"
-			done || exit $?
 		fi
 		;;
 	esac
@@ -681,7 +669,6 @@ split_process_annotated_commits () {
 			sub=
 			;;
 		esac
-		cache_set_bailearly=true
 	done || exit $?
 }
 
@@ -1323,6 +1310,29 @@ cmd_split () {
 	progress_nl
 
 	progress "De-normalizing cache of split commits..."
+	id_parents=()
+	for file in "$cachedir"/*
+	do
+		key="${file##*/}"
+		case "$key" in
+		latest_old|latest_new|subtree)
+			:
+			;;
+		*)
+			if test "$(cache_get "$key")" = "$key"
+			then
+				id_parents+=("$key")
+			fi
+			;;
+		esac
+	done
+	if test "${#id_parents[@]}" -gt 0
+	then
+		git rev-list "${id_parents[@]}" | while read -r ancestor
+		do
+			cache_set_internal "$ancestor" "$ancestor"
+		done || exit $?
+	fi
 	redo_parents=()
 	for file in "$cachedir"/*
 	do
@@ -1349,8 +1359,6 @@ cmd_split () {
 			fi
 		done || exit $?
 	fi
-
-	cache_set_bailearly=true
 
 	progress 'Counting commits...'
 	local split_max=0
