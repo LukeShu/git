@@ -333,7 +333,10 @@ cache_set_internal () {
 		fi
 		if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
 		then
-			die "(while redoing ${split_redoing}) commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
+			die "$(printf '%s\n' \
+			    "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val" \
+			    '  redo stack:' \
+			    "$(printf '    %s\n' ${split_redoing})")"
 		fi
 		echo "$val" >>"$cachedir/subtree"
 		;;
@@ -1032,12 +1035,7 @@ split_process_commit () {
 	local indent=$(($indent + 1))
 	if has_attr "$rev" redo; then
 		debug "(redoing previous split)"
-		if test -z "$split_redoing"
-		then
-			local split_redoing=$rev
-		fi
-	else
-		local split_redoing=''
+		local split_redoing="$split_redoing $rev"
 	fi
 
 	local parents
