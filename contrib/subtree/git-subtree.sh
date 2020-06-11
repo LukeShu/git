@@ -391,7 +391,11 @@ cache_set_internal () {
 		fi
 		if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
 		then
-			die "(while redoing ${split_redoing}) commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val"
+			# shellcheck disable=SC2086 # $split_redoing is intentionally unquoted
+			die "$(printf '%s\n' \
+			    "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val" \
+			    '  redo stack:' \
+			    "$(printf '    %s\n' ${split_redoing})")"
 		fi
 		if test "$val" != counted
 		then
@@ -1124,12 +1128,7 @@ split_process_commit () {
 	if has_attr "$rev" redo
 	then
 		debug "(redoing previous split)"
-		if test -z "$split_redoing"
-		then
-			local split_redoing=$rev
-		fi
-	else
-		local split_redoing=''
+		local split_redoing="$split_redoing $rev"
 	fi
 
 	local parents
