@@ -1211,46 +1211,36 @@ cmd_split () {
 
 	progress "De-normalizing cache of split commits..."
 	id_parents=()
-	git rev-list "$val^@" |
+	redo_parents=()
 	for file in "$cachedir"/*; do
 		key="${file##*/}"
-		case "$key" in
-		latest_old|latest_new|subtree)
-			:
-			;;
-		*)
-			if test "$(cache_get "$key")" = "$key"
-			then
-				id_parents+=("$key")
-			fi
-			;;
-		esac
+		if test "$key" = latest_old || test "$key" = latest_new || test "$key" = subtree
+		then
+			continue
+		fi
+		val="$(cache_get "$key")" || exit $?
+		if test "$val" = notree
+		then
+			continue
+		fi
+		if test "$(cache_get "$key")" = "$key"
+		then
+			id_parents+=("$key")
+		else
+			redo_parents+=("$key")
+		fi
 	done
 	git rev-list "${id_parents[@]}" | while read -r ancestor
 	do
 		cache_set_internal "$ancestor" "$ancestor"
 	done || exit $?
-	redo_parents=()
-	for file in "$cachedir"/*; do
-		key="${file##*/}"
-		case "$key" in
-		latest_old|latest_new|subtree)
-			:
-			;;
-		*)
-			if test "$(cache_get "$key")" != "$key"
-			then
-				redo_parents+=("$key")
-			fi
-			;;
-		esac
-	done
 	git rev-list "${redo_parents[@]}" | while read -r ancestor
 	do
 		if test -z "$(cache_get "$ancestor")"; then
 			attr_set_internal "$ancestor" redo
 		fi
 	done
+	progress_nl
 
 	progress 'Counting commits...'
 	local split_max=0
