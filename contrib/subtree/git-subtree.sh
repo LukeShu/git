@@ -327,6 +327,38 @@ cache_setup () {
 		die "Can't create new dirs: $cachedir $attrdir"
 	debug "Using cachedir: $cachedir"
 	debug "Using attrdir: $attrdir"
+
+	amb_cache_set 130f95dd6196f30480916f8e4a90fb156c8eedf0 f6a44a49fa83068dd8d4aef0a65f09d5cb5c9420
+	amb_cache_set 09b2f4e42e1a062862521eb56969fd93bb752716 96cfb12ef97a24e2d9a503ca7dfd464866ac8531
+	amb_cache_set 275c165bc11d5e88aa250062dcc9c7c1d67ddd1d 06d8f4347523f306f1174e2f46b02354a59872b4
+	amb_cache_set fb4e11a22a54deeae680f5785a5675335a0b6955 bde6a8a95d2b89d52b39244e290fea08fad48770
+	amb_cache_set 944742e9757b751defb6411e2b5b2a683aadbf96 7809be2a0155a0062b038c6ac2349fb5a1a1bcac
+	amb_cache_set 2dabce48c6b866163b86eda67c5795aafa768a15 e73cc549e079f2936591884a241aff2781494551
+	amb_cache_set 581b3f3cee97b3f8c3fb90e2c5d312618bff71c7 10506c3c6c19b191696a5f62d115529c0ac12761
+	amb_cache_set 69cd3b3c075ec38a8691a959ea2c6cfc796a7d07 1ead085b83cfd24563df0f8b17310e0843471f61
+	amb_cache_set f47889387fb0871f05ff7d82a9f7e2a756f973b1 a6a6cb518dc555b543361f31973555aa1ce78cc4
+	amb_cache_set 7c268afe9646df2699713fa72ae0336a47577657 7ea89eee5d5ca81ae43c02d90aead0d6c1cc6a35
+	amb_cache_set b7dce583f52bb05427f8598642f788bb22fdffa4 682675eacad0fe259b2f71dedcfd0899c1b2c44e
+	amb_cache_set c6a67354774b37dd76aa5be0d42098030678451e 8356e985c6cdf09cc6de2fe47d0c85632b7e1bc7
+	amb_cache_set 9d22c25c50ffab55fa28cf1e6beafc97acc59294 9b83d6f7758987793df2ef6c5f25a7c791cae80c
+	amb_cache_set e53fbd9576eb14c83bcae76bb6d038b372734af3 2875fd2748bbae1fbc1300daf3854c86159e4f9f
+	amb_cache_set 7621a79cc576a592abd94485e381b060ec241004 515d31f375e626f9df8b297d9bebd15f16d914db
+	amb_cache_set bcedeca3c11e07b375a3d3138f66121725d38d7c 3911c04602e7174de9f6cc8387473c37605abd8d
+	amb_cache_set 12cddeda374e04eb13a982a28e24cac5b758a3c9 63b22c5d14f8f8f38723619751e199cbd899e884
+	amb_cache_set 51d920a067afbb77830eb1cf1300fff357d5c6a6 37efd5f873831e0d42946856e190d8abfd60885f
+	amb_cache_set bef93177c6edc354ae507d1760d3495d0a6c16e4 1c6771e3d48fbfc04138f7f2b4ee8988f43ece9f
+	amb_cache_set 410e64e74a2f2797fb45af196ba7825a53f36aa2 7dceec01a803b0b85f078bf2ffe4ac94842eee95
+	amb_cache_set 80aa7e6a6b71b175c35537c2d51cf8a36db494bb d9c3975b2cf9f76eccc2db422678c37139ca5dd4
+	amb_cache_set 32f387a4fb0138b36a8766d9213043c6e6f66011 922e24a6adb1d7adfd10a82d23b0449e7de5a666
+}
+
+amb_cache_set() {
+	local key="$1"
+	local val="$2"
+	if git rev-parse --verify "$key^{commit}" >&/dev/null && git rev-parse --verify "$val^{commit}" >&/dev/null
+	then
+		cache_set "$key" "$val"
+	fi
 }
 
 # Usage: cache_get [REVS...]
@@ -444,7 +476,8 @@ cache_set () {
 		if $split_started
 		then
 			local parents
-			parents=$(git rev-parse "$val^@")
+			parents=$(git rev-parse "$val^@") ||
+				die "could not read parents of commit $val"
 			local parent
 			for parent in $parents
 			do
@@ -984,7 +1017,8 @@ split_list_relevant_parents () {
 	local rev="$1"
 
 	local parents
-	parents=$(git rev-parse "$rev^@")
+	parents=$(git rev-parse "$rev^@") ||
+		die "could not read parents of commit $rev"
 
 	# If  (1.a) this is a simple 2-way merge,
 	# and (1.b) one of the parents has the subtree,
