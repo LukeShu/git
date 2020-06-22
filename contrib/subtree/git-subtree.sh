@@ -429,10 +429,6 @@ cache_set_internal () {
 			    '  redo stack:' \
 			    "$(printf '    %s\n' ${split_redoing})")"
 		fi
-		if test "$val" != counted
-		then
-			echo "$val" >>"$cachedir/subtree"
-		fi
 		;;
 	esac
 	echo "$val" >"$cachedir/$key"
@@ -1348,7 +1344,7 @@ cmd_split () {
 	for file in "$cachedir"/*
 	do
 		key="${file##*/}"
-		if test "$key" = latest_old || test "$key" = latest_new || test "$key" = subtree || test "$key" = '*'
+		if test "$key" = latest_old || test "$key" = latest_new || test "$key" = '*'
 		then
 			continue
 		fi
