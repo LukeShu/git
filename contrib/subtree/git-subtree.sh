@@ -29,20 +29,18 @@ h,help        show the help
 q             quiet
 d             show debug messages
 P,prefix=     the name of the subdir to split out
+
  options for 'split' (also: 'push')
 annotate=     add a prefix to commit message of new commits
 b,branch=     create a new branch from the split subtree
 ignore-joins  ignore prior --rejoin commits
 onto=         try connecting new tree to an existing one
 rejoin        merge the new branch back into HEAD
+
  options for 'add' and 'merge' (also: 'pull', 'split --rejoin', and 'push --rejoin')
 squash        merge subtree changes as a single commit
 m,message=    use the given message as the commit message for the merge commit
 "
-
-PATH=$(git --exec-path):$PATH
-. git-sh-setup
-#set -euE
 
 indent=0
 
@@ -89,6 +87,8 @@ main () {
 	fi
 	set_args="$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "$@" || echo exit $?)"
 	eval "$set_args"
+	PATH=$(git --exec-path):$PATH
+	. git-sh-setup
 	require_work_tree
 
 	# First figure out the command and whether we use --rejoin, so
