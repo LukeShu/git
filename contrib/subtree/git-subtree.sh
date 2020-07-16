@@ -1011,22 +1011,22 @@ split_list_relevant_parents () {
 	#
 	# If (1) is satisfied,
 	# and (2.a) the subtree-directory in mainline parent is identical to in the merge,
-	# but (2.b) the subtree parent is not identical to the subtree-directory in the merge,
-	# then:
-	#
-	#  it is reasonably safe to assume that the merge is for a
-	#  *different subtree* than the subtree-directory that we're
-	#  splitting, and that we should ignore the subtree parent.
-	#
-	# On the other hand,
-	# if (1) is satisfied,
-	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
-	# and (3.b) the subtree parent is identical to the subtree-directory in the merge,
+	# and (2.b) the subtree parent is identical to the subtree-directory in the merge,
 	# then:
 	#
 	#  it is reasonably safe to assume that the merge is
 	#  specifically a --rejoin, and we can avoid crawling the
 	#  history more.
+	#
+	# On the other hand,
+	# if (1) is satisfied,
+	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
+	# but (3.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is for a
+	#  *different subtree* than the subtree-directory that we're
+	#  splitting, and that we should ignore the subtree parent.
 
 	# shellcheck disable=SC2086 # $parents is intentionally unquoted
 	set -- $parents
@@ -1047,26 +1047,26 @@ split_list_relevant_parents () {
 			mainline_subtree=$p2_subtree
 			subtree=$1
 		fi
-		if test -n "$mainline"
+		if test -n "$mainline" # condition (1)
 		then
 			# OK, condition (1) is satisfied
 			debug "commit $rev is a subtree-merge"
 			local merge_subtree
 			merge_subtree=$(subtree_for_commit "$rev")
-			if test "$merge_subtree" = "$mainline_subtree"
+			if test "$merge_subtree" = "$mainline_subtree" # condition (2.a)=(3.a)
 			then
 				local subtree_toptree
 				subtree_toptree=$(toptree_for_commit "$subtree")
-				if test "$merge_subtree" != "$subtree_toptree"
+				if test "$merge_subtree" = "$subtree_toptree" # condition (2.b)
 				then
 					# OK, condition (2) is satisfied
-					debug "commit $rev is a merge for a different subtree"
-					echo "$mainline"
-					return
-				else
-					# OK, condition (3) is satisfied
 					debug "commit $rev is is a --rejoin merge"
 					cache_set "$rev" "$subtree"
+					return
+				else # condition (3.b)
+					# OK, condition (3) is satisfied
+					debug "commit $rev is a merge for a different subtree"
+					echo "$mainline"
 					return
 				fi
 			fi
