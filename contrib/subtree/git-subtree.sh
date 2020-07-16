@@ -1024,7 +1024,7 @@ split_classify_commit () {
 		# It contains the subtree path; presume it is a
 		# mainline commit that contains the subtree.
 		echo 'mainline:tree'
-	elif git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null
+	elif git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null 2>/dev/null
 	then
 		# It has an ancestor that is known to be a subtree
 		# commit; assume it's a subtree-commit.
