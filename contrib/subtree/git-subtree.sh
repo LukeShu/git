@@ -1021,12 +1021,25 @@ split_list_relevant_parents () {
 	# On the other hand,
 	# if (1) is satisfied,
 	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
-	# but (3.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# and (3.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# and (3.c)
+	#   either (3.c.1) the merge differs from the mainline parent,
+	#   and/or (3.c.2) split_classify_commit doesn't classify the subtree parent as being part of our subtree ('split'),
 	# then:
 	#
 	#  it is reasonably safe to assume that the merge is for a
 	#  *different subtree* than the subtree-directory that we're
 	#  splitting, and that we should ignore the subtree parent.
+	#
+	#  Now, (3.c) merits some explanation:
+	#   - (3.c.1) indicates that only things outside of our
+	#     subtree changes, and since (1) tells us that this is a
+	#     subtree-merge, then it must obviously be a different
+	#     subtree.
+	#   - (3.c.2) if we can't get an answer from the merge data
+	#     (as !3.c.1 would indicate), then we must get our answer
+	#     from inspecting the commit itself, and that's what
+	#     split_classsify_commit does.
 
 	# shellcheck disable=SC2086 # $parents is intentionally unquoted
 	set -- $parents
@@ -1064,10 +1077,20 @@ split_list_relevant_parents () {
 					cache_set "$rev" "$subtree"
 					return
 				else # condition (3.b)
-					# OK, condition (3) is satisfied
-					debug "commit $rev is a merge for a different subtree"
-					echo "$mainline"
-					return
+					local merge_toptree mainline_toptree
+					merge_toptree=$(toptree_for_commit "$rev")
+					mainline_toptree=$(toptree_for_commit "$mainline")
+
+					local classification
+					classification=$(split_classify_commit "$subtree")
+
+					if test "$merge_toptree" != "$mainline_toptree" || test "$classification" != 'split' # condition (3.c)
+					then
+						# OK, condition (3) is satisfied
+						debug "commit $rev is a merge for a different subtree"
+						echo "$mainline"
+						return
+					fi
 				fi
 			fi
 		fi
