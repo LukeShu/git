@@ -1126,7 +1126,7 @@ split_remember () {
 		die "Commit '${before}' does not have a '${dir}' directory."
 	after_tree=$(toptree_for_commit "$after") ||
 		die "Could not get root directory for subtree commit '${after}'."
-	test "$before_tree" == "$after_tree" ||
+	test "$before_tree" = "$after_tree" ||
 		die "Before-commit '${before}' and after-commit '${after}' do not have trees that go together."
 
 	# validate: messages
