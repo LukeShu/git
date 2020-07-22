@@ -1045,40 +1045,25 @@ reduce_commits() {
 	# serialized map/reduce to shrink that list as much as
 	# possible using `git merge-base --independent`.
 
-	# POSIX guarantees that ARG_MAX is at least 4096.  At 40+1
-	# bytes per commit for sha1+null, we've got
-	local overhead max_args
-	overhead=$(echo "$(which git-merge-base) --independent --" | wc -c)
-	max_args=$(( (4096-$overhead) / 41 ))
+	local tmpdir
+	tmpdir="$(mktemp -d -t git-subtree.XXXXXXXXXX)"
+	trap 'rm -rf -- "$tmpdir"' RETURN
 
-	local tmpfile
-	tmpfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
-	trap 'rm -- "$tmpfile"' RETURN
+	# First (no-op) iteration
+	touch "$tmpdir/in"
+	xargs printf '%s\n' > "$tmpdir/out"
 
-	local args in=0 batches=0
-	while mapfile -t -n "$max_args" args
+	# Do we need to run again?
+	#  (first iteration: yes, unless the input was empty)
+	#  (later iterations: possibly, if there were multiple batches
+	#   and things can reduce across batches)
+	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l "$tmpdir/in")"
 	do
-		if test "${#args[@]}" = 0
-		then
-			break
-		fi
-		in=$(( $in + ${#args[@]} ))
-		batches=$(($batches + 1))
-		git merge-base --independent -- "${args[@]}"
-	done > "$tmpfile" || exit $?
+	      mv "$tmpdir/out" "$tmpdir/in"
+	      <"$tmpdir/in" xargs git merge-base --independent -- | sort --random-sort --unique >"$tmpdir/out"
+	done
 
-	local out
-	out=$(wc -l <"$tmpfile")
-	if test "$batches" -le 1 || test "$out" -eq "$in"
-	then
-		# We're done here; either everything fit in one batch,
-		# or we made no progress so we're going to give up.
-		< "$tmpfile" LC_COLLATE=C sort
-	else
-		# We had multiple batches--let's see if we can reduce
-		# commits that were in separate batches.
-		<"$tmpfile" sort --random-sort --uniq | reduce_commits || return $?
-	fi
+	LC_COLLATE=C sort <"$tmpdir/out"
 }
 
 # Usage: printf '%s\n' POSSIBLE_SIBLINGS... | is_related COMMIT
