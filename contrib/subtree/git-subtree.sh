@@ -1126,6 +1126,62 @@ split_count_commits () {
 	done
 }
 
+# Usage: printf '%s\n' POSSIBLE_SIBLINGS... | reduce_commits
+#
+# shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
+reduce_commits() {
+	assert test $# = 0
+
+	# The main constraint that this function solves is that we
+	# might have a list of too many commits to pass as arguments
+	# to `git merge-base` without overflowing ARG_MAX.  So we're
+	# going to batch the commits in to groups, and do a janky
+	# serialized map/reduce to shrink that list as much as
+	# possible using `git merge-base --independent`.
+
+	local tmpdir
+	tmpdir="$(mktemp -d -t git-subtree.XXXXXXXXXX)"
+
+	# First (no-op) iteration
+	touch "$tmpdir/in"
+	xargs printf '%s\n' > "$tmpdir/out"
+
+	# Do we need to run again?
+	#  (first iteration: yes, unless the input was empty)
+	#  (later iterations: possibly, if there were multiple batches
+	#   and things can reduce across batches)
+	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l <"$tmpdir/in")"
+	do
+		mv "$tmpdir/out" "$tmpdir/in"
+		<"$tmpdir/in" xargs git merge-base --independent -- >"$tmpdir/out.tmp" || die
+		<"$tmpdir/out.tmp" sort --random-sort --unique >"$tmpdir/out"
+	done
+
+	LC_COLLATE=C sort <"$tmpdir/out"
+	rm -rf -- "$tmpdir"
+}
+
+# Usage: printf '%s\n' POSSIBLE_SIBLINGS... | is_related COMMIT
+is_related() {
+	assert test $# = 1
+
+	local tmpfile
+	tmpfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
+
+	reduce_commits > "$tmpfile"
+	local result=1
+	while read -r other
+	do
+		if git merge-base -- "$rev" "$other" >/dev/null
+		then
+			result=0
+			break
+		fi
+	done <"$tmpfile"
+	rm -- "$tmpfile"
+	return "$result"
+}
+
 # Usage: split_classify_commit REV
 split_classify_commit () {
 	assert test $# = 1
@@ -1139,7 +1195,7 @@ split_classify_commit () {
 		# It contains the subtree path; presume it is a
 		# mainline commit that contains the subtree.
 		echo 'mainline:tree'
-	elif git merge-base "$rev" -- $(grep -rhvx notree "$cachedir") >/dev/null 2>&1
+	elif { grep -hrvx notree "$cachedir" || true; } | is_related "$rev"
 	then
 		# It has an ancestor that is known to be a subtree
 		# commit; assume it's a subtree-commit.
