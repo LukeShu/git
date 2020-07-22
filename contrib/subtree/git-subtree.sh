@@ -1057,7 +1057,7 @@ reduce_commits() {
 	#  (first iteration: yes, unless the input was empty)
 	#  (later iterations: possibly, if there were multiple batches
 	#   and things can reduce across batches)
-	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l "$tmpdir/in")"
+	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l <"$tmpdir/in")"
 	do
 	      mv "$tmpdir/out" "$tmpdir/in"
 	      <"$tmpdir/in" xargs git merge-base --independent -- | sort --random-sort --unique >"$tmpdir/out"
