@@ -1038,6 +1038,9 @@ split_count_commits () {
 reduce_commits() {
 	assert test $# = 0
 
+	debug "reduce_commits"
+	local indent=$(($indent + 1))
+
 	# The main constraint that this function solves is that we
 	# might have a list of too many commits to pass as arguments
 	# to `git merge-base` without overflowing ARG_MAX.  So we're
@@ -1060,7 +1063,9 @@ reduce_commits() {
 	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l <"$tmpdir/in")"
 	do
 	      mv "$tmpdir/out" "$tmpdir/in"
-	      <"$tmpdir/in" xargs git merge-base --independent -- | sort --random-sort --unique >"$tmpdir/out"
+	      <"$tmpdir/in" xargs git merge-base --independent -- >"$tmpdir/out.tmp" || die
+	      <"$tmpdir/out.tmp" sort --random-sort --unique >"$tmpdir/out"
+	      debug "reduced $(wc -l <"$tmpdir/in") to $(wc -l <"$tmpdir/out")"
 	done
 
 	LC_COLLATE=C sort <"$tmpdir/out"
@@ -1070,12 +1075,21 @@ reduce_commits() {
 is_related() {
 	assert test $# = 1
 
-	reduce_commits | while read -r other; do
+	debug "is_related $rev"
+	local indent=$(($indent + 1))
+
+	local tmpfile
+	tmpfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
+	trap 'rm -- "$tmpfile"' RETURN
+	
+	reduce_commits > "$tmpfile"
+	while read -r other; do
+		debug "git merge-base -- $rev $other => $(git merge-base -- "$rev" "$other")"
 		if git merge-base -- "$rev" "$other" >/dev/null
 		then
 			return 0
 		fi
-	done
+	done <"$tmpfile"
 	return 1
 }
 
