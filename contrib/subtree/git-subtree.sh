@@ -1034,6 +1034,66 @@ split_count_commits () {
 	done
 }
 
+# Usage: printf '%s\n' POSSIBLE_SIBLINGS... | reduce_commits
+reduce_commits() {
+	assert test $# = 0
+
+	# The main constraint that this function solves is that we
+	# might have a list of too many commits to pass as arguments
+	# to `git merge-base` without overflowing ARG_MAX.  So we're
+	# going to batch the commits in to groups, and do a janky
+	# serialized map/reduce to shrink that list as much as
+	# possible using `git merge-base --independent`.
+
+	# POSIX guarantees that ARG_MAX is at least 4096.  At 40+1
+	# bytes per commit for sha1+null, we've got
+	local overhead max_args
+	overhead=$(echo "$(which git-merge-base) --independent --" | wc -c)
+	max_args=$(( (4096-$overhead) / 41 ))
+
+	local tmpfile
+	tmpfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
+	trap 'rm -- "$tmpfile"' RETURN
+
+	local args in=0 batches=0
+	while mapfile -t -n "$max_args" args
+	do
+		if test "${#args[@]}" = 0
+		then
+			break
+		fi
+		in=$(( $in + ${#args[@]} ))
+		batches=$(($batches + 1))
+		git merge-base --independent -- "${args[@]}"
+	done > "$tmpfile" || exit $?
+
+	local out
+	out=$(wc -l <"$tmpfile")
+	if test "$batches" -le 1 || test "$out" -eq "$in"
+	then
+		# We're done here; either everything fit in one batch,
+		# or we made no progress so we're going to give up.
+		< "$tmpfile" LC_COLLATE=C sort
+	else
+		# We had multiple batches--let's see if we can reduce
+		# commits that were in separate batches.
+		<"$tmpfile" sort --random-sort --uniq | reduce_commits || return $?
+	fi
+}
+
+# Usage: printf '%s\n' POSSIBLE_SIBLINGS... | is_related COMMIT
+is_related() {
+	assert test $# = 1
+
+	reduce_commits | while read -r other; do
+		if git merge-base -- "$rev" "$other" >/dev/null
+		then
+			return 0
+		fi
+	done
+	return 1
+}
+
 # Usage: split_classify_commit REV
 split_classify_commit () {
 	assert test $# = 1
@@ -1046,7 +1106,7 @@ split_classify_commit () {
 		# It contains the subtree path; presume it is a
 		# mainline commit that contains the subtree.
 		echo 'mainline:tree'
-	elif git merge-base "$rev" -- $(cat "$cachedir"/* | grep -vx notree) >/dev/null 2>/dev/null
+	elif grep -hrvx notree "$cachedir" | is_related "$rev"
 	then
 		# It has an ancestor that is known to be a subtree
 		# commit; assume it's a subtree-commit.
