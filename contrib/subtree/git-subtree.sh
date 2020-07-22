@@ -88,7 +88,6 @@ main () {
 	fi
 	set_args="$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "$@" || echo exit $?)"
 	eval "$set_args"
-	PATH=$(git --exec-path):$PATH
 	. git-sh-setup
 	require_work_tree
 
