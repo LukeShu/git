@@ -1021,6 +1021,9 @@ split_count_commits () {
 		return
 	fi
 
+	debug "Counting commit: $rev"
+	local indent=$(($indent + 1))
+
 	cache_set "$rev" counted
 	split_max=$(($split_max + 1))
 	progress "Counting commits... $split_max"
