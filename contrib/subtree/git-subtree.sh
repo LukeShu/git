@@ -376,8 +376,8 @@ has_attr () {
 	test -r "$scratchdir/attrs/$rev" && grep -qFx "$attr" "$scratchdir/attrs/$rev"
 }
 
-# Usage: attr_set_internal COMMIT SUBTREE_COMMIT
-attr_set_internal () {
+# Usage: attr_set COMMIT SUBTREE_COMMIT
+attr_set () {
 	assert test $# = 2
 	local key="$1"
 	local val="$2"
@@ -1573,7 +1573,7 @@ cmd_split () {
 		do
 			if test -z "$(cache_get "$ancestor")"
 			then
-				attr_set_internal "$ancestor" redo
+				attr_set "$ancestor" redo
 			fi
 		done || exit $?
 	fi
