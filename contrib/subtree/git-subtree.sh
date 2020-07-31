@@ -12,10 +12,10 @@
 # Globals (split):
 # - cachedir (readonly)
 # - attrdir (readonly)
-# - revmax (readonly)
-# - revcount
-# - createcount
-# - extracount
+# - split_max (readonly)
+# - split_processed
+# - split_created_from
+# - split_created_to
 
 OPTS_SPEC="\
 git subtree add   --prefix=<prefix> <commit>
