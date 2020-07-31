@@ -1024,7 +1024,7 @@ split_list_relevant_parents () {
 	# and (3.b) the subtree parent is not identical to the subtree-directory in the merge,
 	# and (3.c)
 	#   either (3.c.1) the merge differs from the mainline parent,
-	#   and/or (3.c.2) split_classify_commit doesn't classify the subtree parent as being part of our subtree ('split'),
+	#   and/or (3.c.2) split_classify_commit doesn't classify the subtree parent as being part of our subtree ('split' or 'squash'),
 	# then:
 	#
 	#  it is reasonably safe to assume that the merge is for a
@@ -1068,23 +1068,34 @@ split_list_relevant_parents () {
 			merge_subtree=$(subtree_for_commit "$rev")
 			if test "$merge_subtree" = "$mainline_subtree" # condition (2.a)=(3.a)
 			then
+				local classification
+				classification=$(split_classify_commit "$subtree")
+
 				local subtree_toptree
 				subtree_toptree=$(toptree_for_commit "$subtree")
 				if test "$merge_subtree" = "$subtree_toptree" # condition (2.b)
 				then
 					# OK, condition (2) is satisfied
 					debug "commit $rev is is a --rejoin merge"
-					cache_set "$rev" "$subtree"
-					return
+					case "$classification" in
+					split)
+						cache_set "$rev" "$subtree"
+						return
+						;;
+					squash)
+						echo "$subtree"
+						return
+						;;
+					*)
+						die "bad classification split-or-squash $subtree: $classification"
+						;;
+					esac
 				else # condition (3.b)
 					local merge_toptree mainline_toptree
 					merge_toptree=$(toptree_for_commit "$rev")
 					mainline_toptree=$(toptree_for_commit "$mainline")
 
-					local classification
-					classification=$(split_classify_commit "$subtree")
-
-					if test "$merge_toptree" != "$mainline_toptree" || test "$classification" != 'split' # condition (3.c)
+					if test "$merge_toptree" != "$mainline_toptree" || { test "$classification" != 'split' && test "$classification" != 'squash'; } # condition (3.c)
 					then
 						# OK, condition (3) is satisfied
 						debug "commit $rev is a merge for a different subtree"
@@ -1190,6 +1201,42 @@ split_classify_commit () {
 	assert test $# = 1
 	local rev="$1"
 
+	local msg m_dir='' m_mainline='' m_split=''
+	msg=$(git show --no-patch --no-show-signature --pretty=format:'%B' "$rev") || exit $?
+	local a b junk
+	while read -r a b junk
+	do
+		case "$a" in
+		git-subtree-dir:)
+			# shellcheck disable=SC2001 # this would be clunky to do without sed
+			m_dir="$(sed 's,/*$,,' <<<"$b")"
+			;;
+		git-subtree-mainline:)
+			m_mainline="$b"
+			;;
+		git-subtree-split:)
+			m_split="$(git rev-parse "$b^{commit}")" ||
+			die "could not rev-parse split hash $b from commit $rev"
+			;;
+		esac
+	done <<<"$msg"
+	if test "$m_dir" = "$dir" && test -n "$m_split"
+	then
+		if test -z "$m_mainline"
+		then
+			# Prior --squash
+			echo 'squash'
+			return
+		else
+			# Prior --rejoin
+			if test -z "$arg_split_ignore_joins"
+			then
+				echo 'mainline:tree'
+				return
+			fi
+		fi
+	fi
+
 	local tree
 	tree=$(subtree_for_commit "$rev") || exit $?
 	# shellcheck disable=SC2046 # $(grep ...) in the 'elif' is intentionally unquoted
@@ -1280,6 +1327,21 @@ split_process_commit () {
 		debug "subtree"
 		cache_set "$rev" "$rev"
 		cache_set latest_new "$rev"
+		;;
+	squash)
+		debug "squash"
+		local a b junk
+		git show --no-patch --no-show-signature --pretty=format:'%B' "$rev" | while read -r a b junk
+		do
+			if test "$a" = 'git-subtree-split:'
+			then
+				cache_set "$rev" "$b"
+				cache_set latest_new "$b"
+			fi
+		done || exit $?
+		;;
+	*)
+		die "bad classification of $rev: $classification"
 		;;
 	esac
 
