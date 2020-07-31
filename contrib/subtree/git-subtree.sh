@@ -1380,7 +1380,7 @@ cmd_split () {
 		if test -z "$(cache_get "$ancestor")"; then
 			attr_set_internal "$ancestor" redo
 		fi
-	done
+	done || exit $?
 	progress_nl
 
 	progress 'Counting commits...'
