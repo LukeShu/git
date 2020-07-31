@@ -1371,16 +1371,22 @@ cmd_split () {
 			redo_parents+=("$key")
 		fi
 	done
-	git rev-list "${id_parents[@]}" | while read -r ancestor
-	do
-		cache_set_internal "$ancestor" "$ancestor"
-	done || exit $?
-	git rev-list "${redo_parents[@]}" | while read -r ancestor
-	do
-		if test -z "$(cache_get "$ancestor")"; then
-			attr_set_internal "$ancestor" redo
-		fi
-	done || exit $?
+	if test "${#id_parents[@]}" -gt 0
+	then
+		git rev-list "${id_parents[@]}" | while read -r ancestor
+		do
+			cache_set_internal "$ancestor" "$ancestor"
+		done || exit $?
+	fi
+	if test "${#redo_parents[@]}" -gt 0
+	then
+		git rev-list "${redo_parents[@]}" | while read -r ancestor
+		do
+			if test -z "$(cache_get "$ancestor")"; then
+				attr_set_internal "$ancestor" redo
+			fi
+		done || exit $?
+	fi
 	progress_nl
 
 	progress 'Counting commits...'
