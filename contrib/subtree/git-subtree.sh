@@ -427,7 +427,7 @@ rev_exists () {
 #   --squash)
 find_latest_squash () {
 	assert test $# -gt 0
-	debug "Looking for latest squash ($dir)..."
+	debug "Pre-loading cache with latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
 	local sq=
@@ -484,14 +484,8 @@ find_latest_squash () {
 split_process_annotated_commits () {
 	assert test $# = 1
 	local rev="$1"
-	debug "Looking for prior annotated commits..."
+	debug "Pre-loading cache with prior annotated commits..."
 	local indent=$(($indent + 1))
-
-	if test -n "$arg_split_onto"
-	then
-		debug "cli --onto: $arg_split_onto"
-		cache_set "$arg_split_onto" "$arg_split_onto"
-	fi
 
 	local grep_format="^git-subtree-dir: $dir/*\$"
 	if test -n "$arg_split_ignore_joins"
@@ -553,6 +547,8 @@ split_process_annotated_commits () {
 	#
 	#   git-subtree-dir: $dir
 	#   git-subtree-split: $S
+	local count=0
+	progress "Pre-loading cache with prior annotated commits... $count"
 	local sq=
 	local main=
 	local sub=
@@ -612,6 +608,8 @@ split_process_annotated_commits () {
 			sq=
 			main=
 			sub=
+			count=$(($count + 1))
+			progress "Pre-loading cache with prior annotated commits... $count"
 			;;
 		esac
 	done || exit $?
@@ -1395,7 +1393,7 @@ cmd_split () {
 	local split_started=false
 	cache_setup
 
-	progress "Pre-loading cache with --remember'ed commits..."
+	progress "Pre-loading cache with --remember'ed commits... 0"
 	local remembered=0 remember before after
 	for remember in "${arg_split_remember[@]}"; do
 		IFS=: read -r before after <<<"$remember"
@@ -1405,9 +1403,18 @@ cmd_split () {
 	done
 	progress_nl
 
+	progress "Pre-loading cache with --onto commits... 0"
+	if test -n "$arg_split_onto"
+	then
+		debug "cli --onto: $arg_split_onto"
+		cache_set "$arg_split_onto" "$arg_split_onto"
+		progress "Pre-loading cache with --onto'ed commits... 1"
+	fi
+	progress_nl
+
 	# This will pre-load the cache with info from commits with
 	# "subtree-XXX: YYY" annotations in the commit message.
-	progress "Looking for prior annotated commits..."
+	progress "Pre-loading cache with prior annotated commits..."
 	split_process_annotated_commits "$rev"
 	progress_nl
 
