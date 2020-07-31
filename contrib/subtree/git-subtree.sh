@@ -38,8 +38,7 @@ fi
 #    + arg_command (readonly)
 #    + dir (readonly)
 #  - misc:
-#    + cachedir (readonly)
-#    + attrdir (readonly)
+#    + scratchdir (readonly)
 #    + indent (mutable, kinda)
 #    + split_started (mutable)
 
@@ -320,37 +319,51 @@ main () {
 	"cmd_$arg_command" "$@"
 }
 
-# Usage: cache_setup
+# Usage: scratchdir_setup
 #
 # shellcheck disable=SC2120 # `test $# = 0` makes shellcheck think we take args
-cache_setup () {
+scratchdir_setup () {
 	assert test $# = 0
-	if test "${cachedir:-}" = "$GIT_DIR/subtree-cache/$$"
+	if test "${scratchdir:-}" = "$GIT_DIR/subtree/$$"
 	then
 		return
 	fi
 	split_started=false # global
-	cachedir="$GIT_DIR/subtree-cache/$$" # global
-	readonly cachedir
-	attrdir="$GIT_DIR/subtree-attr/$$" # global
-	readonly attrdir
-	rm -rf "$cachedir" "$attrdir"||
-		die "Can't delete old dirs: $cachedir $attrdir"
-	mkdir -p "$cachedir" "$attrdir" ||
-		die "Can't create new dirs: $cachedir $attrdir"
-	debug "Using cachedir: $cachedir"
-	debug "Using attrdir: $attrdir"
+	readonly scratchdir="$GIT_DIR/subtree/$$" # global
+	rm -rf "$scratchdir" ||
+		die "Can't delete old scratch dir: $scratchdir"
+	mkdir -p "$scratchdir/cache" "$scratchdir/attrs" ||
+		die "Can't create new scratch dirs: $scratchdir"
+	debug "Using scratchdir: $scratchdir"
+}
+
+# Usage: var_set KEY VAL
+var_set() {
+	assert test $# = 2
+	local key="$1"
+	local val="$2"
+	echo "$val" > "$scratchdir/$key"
+}
+
+# Usage: var_get KEY
+var_get() {
+	assert test $# = 1
+	local key="$1"
+	if test -r "$scratchdir/$key"
+	then
+		cat "$scratchdir/$key"
+	fi
 }
 
 # Usage: cache_get [REVS...]
 cache_get () {
-	assert test -n "$cachedir"
+	assert test -n "$scratchdir"
 	local oldrev
 	for oldrev in "$@"
 	do
-		if test -r "$cachedir/$oldrev"
+		if test -r "$scratchdir/cache/$oldrev"
 		then
-			cat "$cachedir/$oldrev"
+			cat "$scratchdir/cache/$oldrev"
 		fi
 	done
 }
@@ -360,7 +373,7 @@ has_attr () {
 	assert test $# = 2
 	local rev="$1"
 	local attr="$2"
-	test -r "$attrdir/$rev" && grep -qFx "$attr" "$attrdir/$rev"
+	test -r "$scratchdir/attrs/$rev" && grep -qFx "$attr" "$scratchdir/attrs/$rev"
 }
 
 # Usage: attr_set_internal COMMIT SUBTREE_COMMIT
@@ -369,7 +382,7 @@ attr_set_internal () {
 	local key="$1"
 	local val="$2"
 	debug "setting commit:$key += attr:$val"
-	echo "$val" >> "$attrdir/$key"
+	echo "$val" >> "$scratchdir/attrs/$key"
 }
 
 # Usage: cache_set_internal COMMIT SUBTREE_COMMIT
@@ -377,46 +390,39 @@ attr_set_internal () {
 # See cache_set.
 cache_set_internal () {
 	assert test $# = 2
-	assert test -n "$cachedir"
+	assert test -n "$scratchdir"
 	local key="$1"
 	local val="$2"
 	debug "caching commit:$key = subtree_commit:$val"
-	case "$key" in
-	latest_old|latest_new)
-		:
-		;;
-	*)
-		if test -e "$cachedir/$key"
+	if test -e "$scratchdir/cache/$key"
+	then
+		local oldval
+		oldval=$(cat "$scratchdir/cache/$key")
+		if test "$oldval" = "$val"
 		then
-			local oldval
-			oldval=$(cat "$cachedir/$key")
-			if test "$oldval" = "$val"
-			then
-				debug "  already cached: commit:$key = subtree_commit:$val"
-				cache_set_existed=true
-				return
-			elif test "$oldval" = counted
-			then
-				debug "  overwriting existing subtree_commit:counted"
-			else
-				die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
-			fi
-		fi
-		if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
+			debug "  already cached: commit:$key = subtree_commit:$val"
+			cache_set_existed=true
+			return
+		elif test "$oldval" = counted
 		then
-			# shellcheck disable=SC2086 # $split_redoing is intentionally unquoted
-			die "$(printf '%s\n' \
-			    "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val" \
-			    '  redo stack:' \
-			    "$(printf '    %s\n' ${split_redoing})" \
-			    "If you've recently changed your subtree settings (like changing --annotate=)," \
-			    "then you'll need to help git-subtree out by supplying some --remember= flags." \
-			    "Otherwise, this is a bug in git-subtree."
-			    )"
+			debug "  overwriting existing subtree_commit:counted"
+		else
+			die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 		fi
-		;;
-	esac
-	echo "$val" >"$cachedir/$key"
+	fi
+	if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
+	then
+		# shellcheck disable=SC2086 # $split_redoing is intentionally unquoted
+		die "$(printf '%s\n' \
+		    "commit:$key has already been split, but when re-doing the split we got a different result: original_result=unknown new_result=commit:$val" \
+		    '  redo stack:' \
+		    "$(printf '    %s\n' ${split_redoing})" \
+		    "If you've recently changed your subtree settings (like changing --annotate=)," \
+		    "then you'll need to help git-subtree out by supplying some --remember= flags." \
+		    "Otherwise, this is a bug in git-subtree."
+		    )"
+	fi
+	echo "$val" >"$scratchdir/cache/$key"
 }
 
 
@@ -436,7 +442,7 @@ cache_set () {
 
 	cache_set_internal "$key" "$val"
 
-	if  test "$cache_set_existed" = true || test "$key" = latest_old || test "$key" = latest_old
+	if test "$cache_set_existed" = true
 	then
 		return
 	fi
@@ -724,16 +730,16 @@ copy_commit () {
 add_msg () {
 	assert test $# = 0
 
-	local latest_old latest_new
-	latest_old=$(cache_get latest_old) || exit $?
-	latest_new=$(cache_get latest_new) || exit $?
+	local latest_mainline latest_split
+	latest_mainline=$(var_get latest_mainline) || exit $?
+	latest_split=$(var_get latest_split) || exit $?
 
 	local commit_message
 	if test -n "$arg_addmerge_message"
 	then
 		commit_message="$arg_addmerge_message"
 	else
-		commit_message="Add '$dir/' from commit '$latest_new'"
+		commit_message="Add '$dir/' from commit '$latest_split'"
 	fi
 	if test -n "$arg_split_rejoin"
 	then
@@ -746,8 +752,8 @@ add_msg () {
 		$commit_message
 
 		git-subtree-dir: $dir
-		git-subtree-mainline: $latest_old
-		git-subtree-split: $latest_new
+		git-subtree-mainline: $latest_mainline
+		git-subtree-split: $latest_split
 	EOF
 }
 
@@ -757,14 +763,14 @@ add_msg () {
 add_squashed_msg () {
 	assert test $# = 0
 
-	local latest_new
-	latest_new=$(cache_get latest_new) || exit $?
+	local latest_split
+	latest_split=$(var_get latest_split) || exit $?
 
 	if test -n "$arg_addmerge_message"
 	then
 		echo "$arg_addmerge_message"
 	else
-		echo "Merge commit '$latest_new' as '$dir'"
+		echo "Merge commit '$latest_split' as '$dir'"
 	fi
 }
 
@@ -774,23 +780,23 @@ add_squashed_msg () {
 rejoin_msg () {
 	assert test $# = 0
 
-	local latest_old latest_new
-	latest_old=$(cache_get latest_old) || exit $?
-	latest_new=$(cache_get latest_new) || exit $?
+	local latest_mainline latest_split
+	latest_mainline=$(var_get latest_mainline) || exit $?
+	latest_split=$(var_get latest_split) || exit $?
 
 	local commit_message
 	if test -n "$arg_addmerge_message"
 	then
 		commit_message="$arg_addmerge_message"
 	else
-		commit_message="Split '$dir/' into commit '$latest_new'"
+		commit_message="Split '$dir/' into commit '$latest_split'"
 	fi
 	cat <<-EOF
 		$commit_message
 
 		git-subtree-dir: $dir
-		git-subtree-mainline: $latest_old
-		git-subtree-split: $latest_new
+		git-subtree-mainline: $latest_mainline
+		git-subtree-split: $latest_split
 	EOF
 }
 
@@ -1243,7 +1249,7 @@ split_classify_commit () {
 		# It contains the subtree path; presume it is a
 		# mainline commit that contains the subtree.
 		echo 'mainline:tree'
-	elif { grep -rhvx -e notree -e counted "$cachedir" || true; } | is_related "$rev"
+	elif { grep -rhvx -e notree -e counted "$scratchdir/cache" || true; } | is_related "$rev"
 	then
 		# It has an ancestor that is known to be a subtree
 		# commit; assume it's a subtree-commit.
@@ -1322,17 +1328,17 @@ split_process_commit () {
 
 		debug "newrev: $newrev"
 		cache_set "$rev" "$newrev"
-		cache_set latest_new "$newrev"
-		cache_set latest_old "$rev"
+		var_set latest_split "$newrev"
+		var_set latest_mainline "$rev"
 		;;
 	mainline:notree)
 		cache_set "$rev" notree
-		cache_set latest_old "$rev"
+		var_set latest_mainline "$rev"
 		;;
 	split)
 		debug "subtree"
 		cache_set "$rev" "$rev"
-		cache_set latest_new "$rev"
+		var_set latest_split "$rev"
 		;;
 	squash)
 		debug "squash"
@@ -1342,7 +1348,7 @@ split_process_commit () {
 			if test "$a" = 'git-subtree-split:'
 			then
 				cache_set "$rev" "$b"
-				cache_set latest_new "$b"
+				var_set latest_split "$b"
 			fi
 		done || exit $?
 		;;
@@ -1402,8 +1408,6 @@ cmd_add () {
 
 	ensure_clean
 
-	cache_setup || exit $?
-
 	if test $# -eq 1
 	then
 		git rev-parse -q --verify "$1^{commit}" >/dev/null ||
@@ -1461,8 +1465,9 @@ cmd_add_commit () {
 		headp=
 	fi
 
-	cache_set latest_new "$rev"
-	cache_set latest_old "$headrev"
+	scratchdir_setup
+	var_set latest_split "$rev"
+	var_set latest_mainline "$headrev"
 
 	if test -n "$arg_addmerge_squash"
 	then
@@ -1505,7 +1510,7 @@ cmd_split () {
 	fi
 
 	debug "Splitting $dir..."
-	cache_setup
+	scratchdir_setup
 
 	progress "Pre-loading cache with --remember'ed commits... 0"
 	local remembered=0 remember before after
@@ -1536,10 +1541,10 @@ cmd_split () {
 	progress "De-normalizing cache of split commits..."
 	id_parents=()
 	redo_parents=()
-	for file in "$cachedir"/*
+	for file in "$scratchdir/cache"/*
 	do
 		key="${file##*/}"
-		if test "$key" = latest_old || test "$key" = latest_new || test "$key" = '*'
+		if test "$key" = '*'
 		then
 			continue
 		fi
@@ -1592,13 +1597,13 @@ cmd_split () {
 	progress 'Done'
 	progress_nl
 
-	local latest_new
-	latest_new=$(cache_get latest_new) || exit $?
-	if test -z "$latest_new"
+	local latest_split
+	latest_split=$(var_get latest_split) || exit $?
+	if test -z "$latest_split"
 	then
 		say >&2 "No new revisions were found"
-		latest_new=$(cache_get "$rev") || exit $?
-		cache_set latest_new "$latest_new"
+		latest_split=$(cache_get "$rev") || exit $?
+		cache_set latest_split "$latest_split"
 	elif test -n "$arg_split_rejoin"
 	then
 		debug "Merging split branch into HEAD..."
@@ -1607,9 +1612,9 @@ cmd_split () {
 		latest_squash=$(find_latest_squash "$rev") || exit $?
 		if test -z "$latest_squash"
 		then
-			cmd_add "$latest_new" >&2 || exit $?
+			cmd_add "$latest_split" >&2 || exit $?
 		else
-			cmd_merge "$latest_new" >&2 || exit $?
+			cmd_merge "$latest_split" >&2 || exit $?
 		fi
 	fi
 
@@ -1618,19 +1623,19 @@ cmd_split () {
 		local action
 		if rev_exists "refs/heads/$arg_split_branch"
 		then
-			if ! git merge-base --is-ancestor "$arg_split_branch" "$latest_new"
+			if ! git merge-base --is-ancestor "$arg_split_branch" "$latest_split"
 			then
-				die "Branch '$arg_split_branch' is not an ancestor of commit '$latest_new'."
+				die "Branch '$arg_split_branch' is not an ancestor of commit '$latest_split'."
 			fi
 			action='Updated'
 		else
 			action='Created'
 		fi
 		git update-ref -m 'subtree split' \
-			"refs/heads/$arg_split_branch" "$latest_new" || exit $?
+			"refs/heads/$arg_split_branch" "$latest_split" || exit $?
 		say >&2 "$action branch '$arg_split_branch'"
 	fi
-	echo "$latest_new"
+	echo "$latest_split"
 	exit 0
 }
 
