@@ -1161,10 +1161,18 @@ split_process_commit () {
 
 	local cached
 	cached=$(cache_get "$rev") || exit $?
-	if test -n "$cached"
-	then
+	case "$cached" in
+	'')
+		die "processing unexpected commit: $rev"
+		;;
+	counted)
+		# proceed
+		;;
+	*)
+		# already processed
 		return
-	fi
+		;;
+	esac
 
 	debug "Processing commit: $rev"
 	local indent=$(($indent + 1))
@@ -1461,7 +1469,6 @@ cmd_split () {
 	local split_max=0
 	split_count_commits "$rev"
 	readonly split_max
-	rm -f -- $(grep -rlx counted "$cachedir")
 	progress_nl
 
 	split_started=true
