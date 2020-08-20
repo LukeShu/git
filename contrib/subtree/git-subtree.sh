@@ -34,6 +34,7 @@ annotate=     add a prefix to commit message of new commits
 b,branch=     create a new branch from the split subtree
 ignore-joins  ignore prior --rejoin commits
 onto=         try connecting new tree to an existing one
+notree=       inform git-subtree that the commit is a parent-repo commit not containing the subtree, rather than a subtree-repo commit
 rejoin        merge the new branch back into HEAD
 remember=before:after  inform git-subtree that the commit 'before' had previously been split, creating 'after'
 
@@ -101,7 +102,7 @@ main () {
 		opt="$1"
 		shift
 		case "$opt" in
-			--annotate|-b|-P|-m|--onto|--remember)
+			--annotate|-b|-P|-m|--onto|--notree|--remember)
 				shift
 				;;
 			--rejoin)
@@ -140,6 +141,7 @@ main () {
 	arg_prefix=
 	arg_split_branch=
 	arg_split_onto=()
+	arg_split_notree=()
 	arg_split_ignore_joins=
 	arg_split_annotate=
 	arg_split_remember=()
@@ -190,6 +192,12 @@ main () {
 				die "'$1' does not refer to a commit"
 			shift
 			;;
+		--notree)
+			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
+			arg_split_notree+=("$(git rev-parse -q --verify "$1^{commit}")") ||
+				die "'$1' does not refer to a commit"
+			shift
+			;;
 		--no-onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
 			arg_split_onto=()
@@ -235,6 +243,7 @@ main () {
 	readonly arg_debug
 	readonly arg_split_branch
 	readonly arg_split_onto
+	readonly arg_split_notree
 	readonly arg_split_ignore_joins
 	readonly arg_split_annotate
 	readonly arg_split_remember
@@ -1427,6 +1436,16 @@ cmd_split () {
 		cache_set "$onto" "$onto"
 		i=$(($i + 1))
 		progress "Pre-loading cache with --onto commits... $i"
+	done
+	progress_nl
+
+	progress "Pre-loading cache with --notree commits... 0"
+	local i=0 notree
+	for notree in "${arg_split_notree[@]}"; do
+		debug "cli --notree: $notree"
+		cache_set "$notree" notree
+		i=$(($i + 1))
+		progress "Pre-loading cache with --notree commits... $i"
 	done
 	progress_nl
 
