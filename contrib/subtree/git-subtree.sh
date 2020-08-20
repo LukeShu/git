@@ -1426,7 +1426,7 @@ cmd_split () {
 		debug "cli --onto: $onto"
 		cache_set "$onto" "$onto"
 		i=$(($i + 1))
-		progress "Pre-loading cache with --onto'ed commits... $i"
+		progress "Pre-loading cache with --onto commits... $i"
 	done
 	progress_nl
 
