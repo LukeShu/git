@@ -139,7 +139,7 @@ main () {
 	arg_debug=
 	arg_prefix=
 	arg_split_branch=
-	arg_split_onto=
+	arg_split_onto=()
 	arg_split_ignore_joins=
 	arg_split_annotate=
 	arg_split_remember=()
@@ -186,13 +186,13 @@ main () {
 			;;
 		--onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_onto=$(git rev-parse -q --verify "$1^{commit}") ||
+			arg_split_onto+=("$(git rev-parse -q --verify "$1^{commit}")") ||
 				die "'$1' does not refer to a commit"
 			shift
 			;;
 		--no-onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_onto=
+			arg_split_onto=()
 			;;
 		--rejoin)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
@@ -1411,22 +1411,23 @@ cmd_split () {
 	scratchdir_setup
 
 	progress "Pre-loading cache with --remember'ed commits... 0"
-	local remembered=0 remember before after
+	local i=0 remember before after
 	for remember in "${arg_split_remember[@]}"; do
 		IFS=: read -r before after <<<"$remember"
 		split_remember "$before" "$after"
-		remembered=$(($remembered + 1))
-		progress "Pre-loading cache with --remember'ed commits... $remembered"
+		i=$(($i + 1))
+		progress "Pre-loading cache with --remember'ed commits... $i"
 	done
 	progress_nl
 
 	progress "Pre-loading cache with --onto commits... 0"
-	if test -n "$arg_split_onto"
-	then
-		debug "cli --onto: $arg_split_onto"
-		cache_set "$arg_split_onto" "$arg_split_onto"
-		progress "Pre-loading cache with --onto'ed commits... 1"
-	fi
+	local i=0 onto
+	for onto in "${arg_split_onto[@]}"; do
+		debug "cli --onto: $onto"
+		cache_set "$onto" "$onto"
+		i=$(($i + 1))
+		progress "Pre-loading cache with --onto'ed commits... $i"
+	done
 	progress_nl
 
 	# This will pre-load the cache with info from commits with
