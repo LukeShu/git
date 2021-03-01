@@ -818,12 +818,13 @@ static void handle_tail(struct object_array *commits, struct rev_info *revs,
 	}
 }
 
-static void handle_tag(const char *name, struct tag *tag)
+static void handle_tag(const char *refname, struct tag *tag)
 {
 	unsigned long size;
 	enum object_type type;
 	char *buf;
-	const char *tagger, *tagger_end, *message;
+	const char *refbasename;
+	const char *tagname, *tagname_end, *tagger, *tagger_end, *message;
 	size_t message_size = 0;
 	struct object *tagged;
 	int tagged_mark;
@@ -851,6 +852,11 @@ static void handle_tag(const char *name, struct tag *tag)
 		message += 2;
 		message_size = strlen(message);
 	}
+	tagname = memmem(buf, message ? message - buf : size, "\ntag ", 5);
+	if (!tagname)
+		die("malformed tag %s", oid_to_hex(&tag->object.oid));
+	tagname += 5;
+	tagname_end = strchrnul(tagname, '\n');
 	tagger = memmem(buf, message ? message - buf : size, "\ntagger ", 8);
 	if (!tagger) {
 		if (fake_missing_tagger)
@@ -867,7 +873,7 @@ static void handle_tag(const char *name, struct tag *tag)
 	}
 
 	if (anonymize) {
-		name = anonymize_refname(name);
+		refname = anonymize_refname(refname);
 		if (message) {
 			static struct hashmap tags;
 			message = anonymize_str(&tags, anonymize_tag,
@@ -921,7 +927,7 @@ static void handle_tag(const char *name, struct tag *tag)
 				p = rewrite_commit((struct commit *)tagged);
 				if (!p) {
 					printf("reset %s\nfrom %s\n\n",
-					       name, oid_to_hex(&null_oid));
+					       refname, oid_to_hex(&null_oid));
 					free(buf);
 					return;
 				}
@@ -935,14 +941,19 @@ static void handle_tag(const char *name, struct tag *tag)
 
 	if (tagged->type == OBJ_TAG) {
 		printf("reset %s\nfrom %s\n\n",
-		       name, oid_to_hex(&null_oid));
+		       refname, oid_to_hex(&null_oid));
 	}
-	skip_prefix(name, "refs/tags/", &name);
-	printf("tag %s\n", name);
+	refbasename = refname;
+	skip_prefix(refbasename, "refs/tags/", &refbasename);
+	printf("tag %s\n", refbasename);
 	if (mark_tags) {
 		mark_next_object(&tag->object);
 		printf("mark :%"PRIu32"\n", last_idnum);
 	}
+	if ((size_t)(tagname_end - tagname) != strlen(refbasename) ||
+	    strncmp(tagname, refbasename, (size_t)(tagname_end - tagname)))
+		printf("name %.*s\n",
+		       (int)(tagname_end - tagname), tagname);
 	if (tagged_mark)
 		printf("from :%d\n", tagged_mark);
 	else
