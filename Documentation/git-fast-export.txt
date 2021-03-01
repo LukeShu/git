@@ -43,6 +43,11 @@ they will be exported, but you will see a warning.  'verbatim' and
 transformations affecting tags will be performed, or if you do not
 care that the resulting tag will have an invalid signature.
 
+--signed-commits=(verbatim|warn-verbatim|warn-strip|strip|abort)::
+	Specify how to handle signed commits.  Behaves exactly as
+	--signed-tags (but for commits), except that the default is
+	'warn-strip' rather than 'abort'.
+
 --tag-of-filtered-object=(abort|drop|rewrite)::
 	Specify how to handle tags whose tagged object is filtered out.
 	Since revisions and files to export can be limited by path,
