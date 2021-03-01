@@ -1,0 +1,41 @@
+commit 6f1871fe0f7d9bddfbe199cceeb255cf8edbaab3
+Author: James Denholm <nod.helm@gmail.com>
+Date:   Tue May 13 14:08:58 2014 +1000
+
+    contrib/subtree: allow adding an annotated tag
+    
+    cmd_add_commit() is passed FETCH_HEAD by cmd_add_repository, which
+    is then rev-parsed into an object name.  However, if the user is
+    fetching a tag rather than a branch HEAD, such as by executing:
+    
+      $ git subtree add -P oldGit https://github.com/git/git.git tags/v1.8.0
+    
+    the object name refers to a tag and is never peeled, and the git
+    commit-tree call (line 561) slaps us in the face because it doesn't
+    peel tags to commits.
+    
+    Because peeling a committish doesn't do anything if it's already a
+    commit, fix by peeling the object name before assigning it to $rev
+    using peel_committish() from git:git-sh-setup.sh, a pre-existing
+    dependency of git-subtree.
+    
+    Reported-by: Kevin Cagle <kcagle@micron.com>
+    Helped-by: Junio C Hamano <gitster@pobox.com>
+    Signed-off-by: James Denholm <nod.helm@gmail.com>
+    Signed-off-by: Junio C Hamano <gitster@pobox.com>
+
+diff --git a/contrib/subtree/git-subtree.sh b/contrib/subtree/git-subtree.sh
+index db925ca769..fa1a5839af 100755
+--- a/contrib/subtree/git-subtree.sh
++++ b/contrib/subtree/git-subtree.sh
+@@ -558,8 +558,9 @@ cmd_add_commit()
+ 		commit=$(add_squashed_msg "$rev" "$dir" |
+ 			 git commit-tree $tree $headp -p "$rev") || exit $?
+ 	else
++		revp=$(peel_committish "$rev") &&
+ 		commit=$(add_msg "$dir" "$headrev" "$rev" |
+-			 git commit-tree $tree $headp -p "$rev") || exit $?
++			 git commit-tree $tree $headp -p "$revp") || exit $?
+ 	fi
+ 	git reset "$commit" || exit $?
+ 	
