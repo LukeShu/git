@@ -767,13 +767,15 @@ static void handle_tail(struct object_array *commits, struct rev_info *revs,
 	}
 }
 
-static void handle_tag(const char *name, struct tag *tag)
+static void handle_tag(const char *refname, struct tag *tag)
 {
 	unsigned long size;
 	enum object_type type;
 	char *buf;
-	const char *tagger, *tagger_end, *message;
+	const char *message;
 	size_t message_size = 0;
+	const char *tagname;
+	const char *tagger, *tagger_end;
 	struct object *tagged;
 	int tagged_mark;
 	struct commit *p;
@@ -795,11 +797,13 @@ static void handle_tag(const char *name, struct tag *tag)
 	buf = read_object_file(&tag->object.oid, &type, &size);
 	if (!buf)
 		die("could not read tag %s", oid_to_hex(&tag->object.oid));
+
 	message = memmem(buf, size, "\n\n", 2);
 	if (message) {
 		message += 2;
 		message_size = strlen(message);
 	}
+
 	tagger = memmem(buf, message ? message - buf : size, "\ntagger ", 8);
 	if (!tagger) {
 		if (fake_missing_tagger)
@@ -816,7 +820,7 @@ static void handle_tag(const char *name, struct tag *tag)
 	}
 
 	if (anonymize) {
-		name = anonymize_refname(name);
+		refname = anonymize_refname(refname);
 		if (message) {
 			static struct hashmap tags;
 			message = anonymize_str(&tags, anonymize_tag,
@@ -870,7 +874,7 @@ static void handle_tag(const char *name, struct tag *tag)
 				p = rewrite_commit((struct commit *)tagged);
 				if (!p) {
 					printf("reset %s\nfrom %s\n\n",
-					       name, oid_to_hex(&null_oid));
+					       refname, oid_to_hex(&null_oid));
 					free(buf);
 					return;
 				}
@@ -884,10 +888,11 @@ static void handle_tag(const char *name, struct tag *tag)
 
 	if (tagged->type == OBJ_TAG) {
 		printf("reset %s\nfrom %s\n\n",
-		       name, oid_to_hex(&null_oid));
+		       refname, oid_to_hex(&null_oid));
 	}
-	skip_prefix(name, "refs/tags/", &name);
-	printf("tag %s\n", name);
+	tagname = refname;
+	skip_prefix(tagname, "refs/tags/", &tagname);
+	printf("tag %s\n", tagname);
 	if (mark_tags) {
 		mark_next_object(&tag->object);
 		printf("mark :%"PRIu32"\n", last_idnum);
