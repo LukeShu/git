@@ -55,7 +55,7 @@ static int parse_opt_signed_tag_mode(const struct option *opt,
 		signed_tag_mode = SIGNED_TAG_ABORT;
 	else if (!strcmp(arg, "verbatim") || !strcmp(arg, "ignore"))
 		signed_tag_mode = VERBATIM;
-	else if (!strcmp(arg, "warn"))
+	else if (!strcmp(arg, "warn-verbatim") || !strcmp(arg, "warn"))
 		signed_tag_mode = WARN;
 	else if (!strcmp(arg, "warn-strip"))
 		signed_tag_mode = WARN_STRIP;
