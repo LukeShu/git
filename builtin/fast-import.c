@@ -2783,6 +2783,7 @@ static void parse_new_commit(const char *arg)
 static void parse_new_tag(const char *arg)
 {
 	static struct strbuf msg = STRBUF_INIT;
+	const char *name = NULL;
 	const char *from;
 	char *tagger;
 	struct branch *s;
@@ -2802,6 +2803,12 @@ static void parse_new_tag(const char *arg)
 	last_tag = t;
 	read_next_command();
 	parse_mark();
+
+	/* name ... */
+	if (skip_prefix(command_buf.buf, "name ", &v)) {
+		name = strdupa(v);
+		read_next_command();
+	}
 
 	/* from ... */
 	if (!skip_prefix(command_buf.buf, "from ", &from))
@@ -2850,7 +2857,7 @@ static void parse_new_tag(const char *arg)
 		    "object %s\n"
 		    "type %s\n"
 		    "tag %s\n",
-		    oid_to_hex(&oid), type_name(type), t->name);
+		    oid_to_hex(&oid), type_name(type), name ? name : t->name);
 	if (tagger)
 		strbuf_addf(&new_data,
 			    "tagger %s\n", tagger);

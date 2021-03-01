@@ -776,6 +776,8 @@ static void handle_tag(const char *refname, struct tag *tag)
 	const char *message;
 	size_t message_size = 0;
 	const char *tagger, *tagger_end;
+	const char *tagname, *tagname_end;
+	size_t tagname_len;
 	struct object *tagged;
 	int tagged_mark;
 	struct commit *p;
@@ -803,6 +805,13 @@ static void handle_tag(const char *refname, struct tag *tag)
 		message += 2;
 		message_size = strlen(message);
 	}
+
+	tagname = memmem(buf, message ? message - buf : size, "\ntag ", 5);
+	if (!tagname)
+		die("malformed tag %s", oid_to_hex(&tag->object.oid));
+	tagname += 5;
+	tagname_end = strchrnul(tagname, '\n');
+	tagname_len = (size_t)(tagname_end - tagname);
 
 	tagger = memmem(buf, message ? message - buf : size, "\ntagger ", 8);
 	if (!tagger) {
@@ -897,6 +906,10 @@ static void handle_tag(const char *refname, struct tag *tag)
 		mark_next_object(&tag->object);
 		printf("mark :%"PRIu32"\n", last_idnum);
 	}
+	if (tagname_len != strlen(refbasename) ||
+	    strncmp(tagname, refbasename, tagname_len))
+		printf("name %.*s\n",
+		       (int)tagname_len, tagname);
 	if (tagged_mark)
 		printf("from :%d\n", tagged_mark);
 	else
