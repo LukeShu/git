@@ -822,24 +822,28 @@ Creates an annotated tag referring to a specific commit.  To create
 lightweight (non-annotated) tags see the `reset` command below.
 
 ....
-	'tag' SP <name> LF
+	'tag' SP <tagname> LF
 	mark?
+	('refname' SP <refname> LF)?
 	'from' SP <commit-ish> LF
 	original-oid?
 	'tagger' (SP <name>)? SP LT <email> GT SP <when> LF
 	data
 ....
 
-where `<name>` is the name of the tag to create.
+where `<tagname>` is the name of the tag that is stored in the tag
+object itself.  The value of `<tagname>` must be a valid for inclusion
+as part of a refname in Git and therefore may contain forward slashes.
+As `LF` is not valid in a Git refname, no quoting or escaping syntax
+is supported here.
 
-Tag names are automatically prefixed with `refs/tags/` when stored
-in Git, so importing the CVS branch symbol `RELENG-1_0-FINAL` would
-use just `RELENG-1_0-FINAL` for `<name>`, and fast-import will write the
-corresponding ref as `refs/tags/RELENG-1_0-FINAL`.
+The `refname` command controls where in the ref hierarchy to put the
+reference that points to the resulting tag object.  If `refname` is
+not given, then `refs/tags/<tagname>` is used.
 
-The value of `<name>` must be a valid refname in Git and therefore
-may contain forward slashes.  As `LF` is not valid in a Git refname,
-no quoting or escaping syntax is supported here.
+So, for example, importing the CVS branch symbol `RELENG-1_0-FINAL`
+would use just `RELENG-1_0-FINAL` for `<tagname>`, and fast-import
+will write the corresponding ref as `refs/tags/RELENG-1_0-FINAL`.
 
 The `from` command is the same as in the `commit` command; see
 above for details.

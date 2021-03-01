@@ -2794,9 +2794,15 @@ static void parse_new_tag(const char *arg)
 	read_next_command();
 	parse_mark();
 
+	/* refname ... */
 	strbuf_reset(&refname);
-	strbuf_addstr(&refname, "refs/tags/");
-	strbuf_addstr(&refname, tagname);
+	if (skip_prefix(command_buf.buf, "refname ", &v)) {
+		strbuf_addstr(&refname, v);
+		read_next_command();
+	} else {
+		strbuf_addstr(&refname, "refs/tags/");
+		strbuf_addstr(&refname, tagname);
+	}
 
 	/* from ... */
 	if (!skip_prefix(command_buf.buf, "from ", &from))

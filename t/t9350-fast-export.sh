@@ -34,6 +34,9 @@ test_expect_success 'setup' '
 	git commit -m sitzt file2 &&
 	test_tick &&
 	git tag -a -m valentin muss &&
+	git tag -a -m joseph pure &&
+	git update-ref refs/english-tags/rein refs/tags/pure &&
+	git update-ref -d refs/tags/pure &&
 	git merge -s ours main
 
 '
@@ -42,6 +45,7 @@ test_expect_success 'fast-export | fast-import' '
 
 	MAIN=$(git rev-parse --verify main) &&
 	REIN=$(git rev-parse --verify rein) &&
+	PURE=$(git rev-parse --verify refs/english-tags/rein) &&
 	WER=$(git rev-parse --verify wer) &&
 	MUSS=$(git rev-parse --verify muss) &&
 	mkdir new &&
@@ -51,6 +55,7 @@ test_expect_success 'fast-export | fast-import' '
 	 git fast-import &&
 	 test $MAIN = $(git rev-parse --verify refs/heads/main) &&
 	 test $REIN = $(git rev-parse --verify refs/tags/rein) &&
+	 test $PURE = $(git rev-parse --verify refs/english-tags/rein) &&
 	 test $WER = $(git rev-parse --verify refs/heads/wer) &&
 	 test $MUSS = $(git rev-parse --verify refs/tags/muss)) <actual
 
@@ -359,7 +364,7 @@ test_expect_success 'fast-export | fast-import when main is tagged' '
 
 	git tag -m msg last &&
 	git fast-export -C -C --signed-tags=strip --all > output &&
-	test $(grep -c "^tag " output) = 3
+	test $(grep -c "^tag " output) = 4
 
 '
 
@@ -374,11 +379,11 @@ test_expect_success 'cope with tagger-less tags' '
 	TAG=$(git hash-object -t tag -w tag-content) &&
 	git update-ref refs/tags/sonnenschein $TAG &&
 	git fast-export -C -C --signed-tags=strip --all > output &&
-	test $(grep -c "^tag " output) = 4 &&
+	test $(grep -c "^tag " output) = 5 &&
 	! grep "Unspecified Tagger" output &&
 	git fast-export -C -C --signed-tags=strip --all \
 		--fake-missing-tagger > output &&
-	test $(grep -c "^tag " output) = 4 &&
+	test $(grep -c "^tag " output) = 5 &&
 	grep "Unspecified Tagger" output
 
 '

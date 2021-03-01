@@ -784,6 +784,7 @@ static void handle_tail(struct object_array *commits, struct rev_info *revs,
 
 static void handle_tag(const char *refname, struct tag *tag)
 {
+	static struct strbuf autorefname = STRBUF_INIT;
 	unsigned long size;
 	enum object_type type;
 	char *buf;
@@ -910,6 +911,9 @@ static void handle_tag(const char *refname, struct tag *tag)
 		}
 	}
 
+	strbuf_reset(&autorefname);
+	strbuf_addf(&autorefname, "refs/tags/%.*s", (int)tagname_len, tagname);
+
 	if (tagged->type == OBJ_TAG) {
 		printf("reset %s\nfrom %s\n\n",
 		       refname, oid_to_hex(&null_oid));
@@ -919,6 +923,8 @@ static void handle_tag(const char *refname, struct tag *tag)
 		mark_next_object(&tag->object);
 		printf("mark :%"PRIu32"\n", last_idnum);
 	}
+	if (strcmp(refname, autorefname.buf))
+		printf("refname %s\n", refname);
 	if (tagged_mark)
 		printf("from :%d\n", tagged_mark);
 	else
