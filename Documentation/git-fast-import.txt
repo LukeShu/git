@@ -437,6 +437,7 @@ change to the project.
 	original-oid?
 	('author' (SP <name>)? SP LT <email> GT SP <when> LF)?
 	'committer' (SP <name>)? SP LT <email> GT SP <when> LF
+	('gpgsig' LF data)?
 	('encoding' SP <encoding>)?
 	data
 	('from' SP <commit-ish> LF)?

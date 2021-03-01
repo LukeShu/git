@@ -2669,7 +2669,9 @@ static struct hash_list *parse_merge(unsigned int *count)
 
 static void parse_new_commit(const char *arg)
 {
+	static struct strbuf sig = STRBUF_INIT;
 	static struct strbuf msg = STRBUF_INIT;
+	struct string_list siglines = STRING_LIST_INIT_NODUP;
 	struct branch *b;
 	char *author = NULL;
 	char *committer = NULL;
@@ -2696,6 +2698,12 @@ static void parse_new_commit(const char *arg)
 	}
 	if (!committer)
 		die("Expected committer but didn't get one");
+	if (!strcmp(command_buf.buf, "gpgsig")) {
+		read_next_command();
+		parse_data(&sig, 0, NULL);
+		read_next_command();
+	} else
+		strbuf_setlen(&sig, 0);
 	if (skip_prefix(command_buf.buf, "encoding ", &v)) {
 		encoding = xstrdup(v);
 		read_next_command();
@@ -2765,12 +2773,19 @@ static void parse_new_commit(const char *arg)
 		"author %s\n"
 		"committer %s\n",
 		author ? author : committer, committer);
+	if (sig.len) {
+		strbuf_addstr(&new_data, "gpgsig ");
+		string_list_split_in_place(&siglines, sig.buf, '\n', -1);
+		strbuf_add_separated_string_list(&new_data, "\n ", &siglines);
+		strbuf_addch(&new_data, '\n');
+	}
 	if (encoding)
 		strbuf_addf(&new_data,
 			"encoding %s\n",
 			encoding);
 	strbuf_addch(&new_data, '\n');
 	strbuf_addbuf(&new_data, &msg);
+	string_list_clear(&siglines, 1);
 	free(author);
 	free(committer);
 	free(encoding);
