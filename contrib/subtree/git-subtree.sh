@@ -120,6 +120,14 @@ progress_nl () {
 assert () {
 	if ! "$@"
 	then
+		echo >&2 "assertion failed: $*"
+		for i in "${!BASH_LINENO[@]}"; do
+			if test -n "${BASH_SOURCE[$(($i+1))]}"
+			then
+				printf >&2 '  at %s:%d\n' "${BASH_SOURCE[$(($i+1))]}" "${BASH_LINENO[$i]}"
+				sed -n "${BASH_LINENO[$i]}s/^/    /p" <"${BASH_SOURCE[$(($i+1))]}" >&2
+			fi
+		done
 		die "assertion failed: $*"
 	fi
 }
@@ -2038,4 +2046,7 @@ cmd_push () {
 	fi
 }
 
+if test -n "${SETX:-}"; then
+	set -x
+fi
 main "$@"
