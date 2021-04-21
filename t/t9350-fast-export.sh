@@ -572,10 +572,17 @@ test_expect_success 'handling tags of blobs' '
 
 test_expect_success 'handling nested tags' '
 	git tag -a -m "This is a nested tag" nested muss &&
+	NESTED=$(git rev-parse --verify nested) &&
 	git fast-export --mark-tags nested >output &&
 	grep "^from $ZERO_OID$" output &&
 	grep "^tag nested$" output >tag_lines &&
-	test_line_count = 2 tag_lines
+	test_line_count = 1 tag_lines &&
+	rm -rf new &&
+	mkdir new &&
+	git --git-dir=new/.git init &&
+	(cd new &&
+	 git fast-import &&
+	 test $NESTED = $(git rev-parse --verify refs/tags/nested)) <output
 '
 
 test_expect_success 'directory becomes symlink'        '
