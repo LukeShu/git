@@ -2836,6 +2836,7 @@ export TEST_NO_MALLOC_CHECK
 
 test: all
 	$(MAKE) -C t/ all
+	$(MAKE) -C contrib/subtree/ test GIT_TEST_OPTS='--immediate -x --verbose'
 
 perf: all
 	$(MAKE) -C t/perf/ all
