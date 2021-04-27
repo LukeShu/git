@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # git-subtree.sh: split/join git repositories in subdirectories of this one
 #
@@ -134,7 +134,7 @@ main () {
 	# shellcheck disable=SC1091 # don't lint git-sh-setup
 	. git-sh-setup
 
-	set -eu
+	set -euE -o pipefail
 
 	require_work_tree
 
@@ -449,7 +449,7 @@ cache_set () {
 		:
 		;;
 	*)
-		if test "$key" != "$val" && ! $split_started
+		if test "$key" != "$val" && test "$key" != latest_old && test "$key" != latest_new && ! $split_started
 		then
 			git rev-list "$key^@" |
 			while read -r ancestor
@@ -1334,7 +1334,7 @@ cmd_split () {
 	local split_max=0
 	split_count_commits "$rev"
 	readonly split_max
-	grep -rlx counted "$cachedir"|grep -v '/subtree$'|xargs -d '\n' rm -f --
+	{ grep -rlx counted "$cachedir" || true; } | { grep -v '/subtree$' || true; } | xargs -d '\n' rm -f --
 	progress_nl
 
 	split_started=true # global
