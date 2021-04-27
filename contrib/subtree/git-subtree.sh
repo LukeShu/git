@@ -426,8 +426,14 @@ find_latest_squash () {
 		END)
 			if test -n "$sub"
 			then
-				if test -n "$main"
+				if test -z "$main"
 				then
+					debug "  prior --squash: $sq"
+					debug "    git-subtree-split: '$sub'"
+				else
+					debug "  prior --rejoin: $sq"
+					debug "    git-subtree-mainline: '$main'"
+					debug "    git-subtree-split:    '$sub'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
 					sq=$(git rev-parse --verify "$sq^2") ||
@@ -478,21 +484,24 @@ find_existing_splits () {
 			die "could not rev-parse split hash $b from commit $sq"
 			;;
 		END)
-			debug "Main is: '$main'"
-			if test -z "$main" -a -n "$sub"
+			if test -n "$sub"
 			then
-				# squash commits refer to a subtree
-				debug "  Squash: $sq from $sub"
-				cache_set "$sq" "$sub"
+				if test -z "$main"
+				then
+					debug "  prior --squash: $sq"
+					debug "    git-subtree-split: '$sub'"
+					cache_set "$sq" "$sub"
+				else
+					debug "  prior --rejoin: $sq"
+					debug "    git-subtree-mainline: '$main'"
+					debug "    git-subtree-split:    '$sub'"
+					cache_set "$main" "$sub"
+					cache_set "$sub" "$sub"
+					try_remove_previous "$main"
+					try_remove_previous "$sub"
+				fi
 			fi
-			if test -n "$main" -a -n "$sub"
-			then
-				debug "  Prior: $main -> $sub"
-				cache_set "$main" "$sub"
-				cache_set "$sub" "$sub"
-				try_remove_previous "$main"
-				try_remove_previous "$sub"
-			fi
+			sq=
 			main=
 			sub=
 			;;
