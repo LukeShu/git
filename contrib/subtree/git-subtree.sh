@@ -121,6 +121,8 @@ main () {
 	# shellcheck disable=SC1091 # don't lint git-sh-setup
 	. git-sh-setup
 
+	set -eu
+
 	require_work_tree
 
 	# First figure out the command and whether we use --rejoin, so
