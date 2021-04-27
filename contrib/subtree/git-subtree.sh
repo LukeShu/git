@@ -323,6 +323,8 @@ cache_get () {
 }
 
 # Usage: cache_miss [REVS...]
+#
+# Print the subset of REVS that are not yet cached.
 cache_miss () {
 	local oldrev
 	for oldrev in "$@"
@@ -358,7 +360,13 @@ set_notree () {
 	echo "1" > "$cachedir/notree/$1"
 }
 
-# Usage: cache_set OLDREV NEWREV
+# Usage: cache_set COMMIT SUBTREE_COMMIT
+#
+# Store a COMMIT->SUBTREE_COMMIT mapping.  COMMIT may be:
+#  - a subtree commit (in which case the mapping is the identity)
+#  - a mainline commit
+#  - a squashed subtree commit
+# mainline commit, or a subtree commit
 cache_set () {
 	assert test $# = 2
 	local oldrev="$1"
@@ -397,6 +405,12 @@ try_remove_previous () {
 }
 
 # Usage: find_latest_squash REVS...
+#
+# Print a pair "A B", where:
+# - A is the latest in-mainline-subtree-commit (either a real
+#   subtree-commit, or a squashed subtree-commit)
+# - B is the corresponding real subtree-commit (just A again, unless
+#   --squash)
 find_latest_squash () {
 	assert test $# -gt 0
 	debug "Looking for latest squash ($dir)..."
