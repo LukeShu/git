@@ -377,6 +377,7 @@ cache_set () {
 	then
 		die "cache for $oldrev already exists!"
 	fi
+	debug "caching commit:$oldrev = subtree_commit:$newrev"
 	echo "$newrev" >"$cachedir/$oldrev"
 }
 
