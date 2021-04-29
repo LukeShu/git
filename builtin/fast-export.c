@@ -612,6 +612,21 @@ static const char *anonymize_refname(const char *refname)
 	return anon.buf;
 }
 
+static const char *anonymize_tagname(size_t tagname_len, const char *tagname)
+{
+	/*
+	 * Use anonymize_refname internally, so that the anonymization
+	 * is consistent between a tag's refname and its internal
+	 * tagname (if they were consistent to begin with, anyway).
+	 */
+	static struct strbuf as_refname = STRBUF_INIT;
+
+	strbuf_reset(&as_refname);
+	strbuf_addf(&as_refname, "refs/tags/%.*s", (int)tagname_len, tagname);
+
+	return anonymize_refname(as_refname.buf) + strlen("refs/tags/");
+}
+
 /*
  * We do not even bother to cache commit messages, as they are unlikely
  * to be repeated verbatim, and it is not that interesting when they are.
@@ -857,13 +872,17 @@ static void handle_tail(struct object_array *commits, struct rev_info *revs,
 	}
 }
 
-static void handle_tag(const char *name, struct tag *tag)
+static void handle_tag(const char *refname, struct tag *tag)
 {
+	static struct strbuf autorefname = STRBUF_INIT;
 	unsigned long size;
 	enum object_type type;
 	char *buf;
-	const char *tagger, *tagger_end, *message;
+	const char *message;
 	size_t message_size = 0;
+	const char *tagname;
+	size_t tagname_len;
+	const char *tagger, *tagger_end;
 	struct object *tagged;
 	int tagged_mark;
 	struct commit *p;
@@ -885,11 +904,19 @@ static void handle_tag(const char *name, struct tag *tag)
 	buf = read_object_file(&tag->object.oid, &type, &size);
 	if (!buf)
 		die("could not read tag %s", oid_to_hex(&tag->object.oid));
+
 	message = memmem(buf, size, "\n\n", 2);
 	if (message) {
 		message += 2;
 		message_size = strlen(message);
 	}
+
+	tagname = memmem(buf, message ? message - buf : size, "\ntag ", 5);
+	if (!tagname)
+		die("malformed tag %s", oid_to_hex(&tag->object.oid));
+	tagname += 5;
+	tagname_len = (size_t)(strchrnul(tagname, '\n') - tagname);
+
 	tagger = memmem(buf, message ? message - buf : size, "\ntagger ", 8);
 	if (!tagger) {
 		if (fake_missing_tagger)
@@ -906,7 +933,9 @@ static void handle_tag(const char *name, struct tag *tag)
 	}
 
 	if (anonymize) {
-		name = anonymize_refname(name);
+		refname = anonymize_refname(refname);
+		tagname = anonymize_tagname(tagname_len, tagname);
+		tagname_len = strlen(tagname);
 		if (message) {
 			static struct hashmap tags;
 			message = anonymize_str(&tags, anonymize_tag,
@@ -960,7 +989,7 @@ static void handle_tag(const char *name, struct tag *tag)
 				p = rewrite_commit((struct commit *)tagged);
 				if (!p) {
 					printf("reset %s\nfrom %s\n\n",
-					       name, oid_to_hex(&null_oid));
+					       refname, oid_to_hex(&null_oid));
 					free(buf);
 					return;
 				}
@@ -972,16 +1001,20 @@ static void handle_tag(const char *name, struct tag *tag)
 		}
 	}
 
+	strbuf_reset(&autorefname);
+	strbuf_addf(&autorefname, "refs/tags/%.*s", (int)tagname_len, tagname);
+
 	if (tagged->type == OBJ_TAG) {
 		printf("reset %s\nfrom %s\n\n",
-		       name, oid_to_hex(&null_oid));
+		       refname, oid_to_hex(&null_oid));
 	}
-	skip_prefix(name, "refs/tags/", &name);
-	printf("tag %s\n", name);
+	printf("tag %.*s\n", (int)tagname_len, tagname);
 	if (mark_tags) {
 		mark_next_object(&tag->object);
 		printf("mark :%"PRIu32"\n", last_idnum);
 	}
+	if (strcmp(refname, autorefname.buf))
+		printf("refname %s\n", refname);
 	if (tagged_mark)
 		printf("from :%d\n", tagged_mark);
 	else

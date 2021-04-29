@@ -127,7 +127,7 @@ struct branch {
 
 struct tag {
 	struct tag *next_tag;
-	const char *name;
+	const char *refname;
 	unsigned int pack_id;
 	struct object_id oid;
 };
@@ -375,7 +375,7 @@ static void write_crash_report(const char *err)
 		for (tg = first_tag; tg; tg = tg->next_tag) {
 			fputs(oid_to_hex(&tg->oid), rpt);
 			fputc(' ', rpt);
-			fputs(tg->name, rpt);
+			fputs(tg->refname, rpt);
 			fputc('\n', rpt);
 		}
 	}
@@ -1654,7 +1654,6 @@ static void dump_tags(void)
 {
 	static const char *msg = "fast-import";
 	struct tag *t;
-	struct strbuf ref_name = STRBUF_INIT;
 	struct strbuf err = STRBUF_INIT;
 	struct ref_transaction *transaction;
 
@@ -1664,10 +1663,7 @@ static void dump_tags(void)
 		goto cleanup;
 	}
 	for (t = first_tag; t; t = t->next_tag) {
-		strbuf_reset(&ref_name);
-		strbuf_addf(&ref_name, "refs/tags/%s", t->name);
-
-		if (ref_transaction_update(transaction, ref_name.buf,
+		if (ref_transaction_update(transaction, t->refname,
 					   &t->oid, NULL, 0, msg, &err)) {
 			failure |= error("%s", err.buf);
 			goto cleanup;
@@ -1678,7 +1674,6 @@ static void dump_tags(void)
 
  cleanup:
 	ref_transaction_free(transaction);
-	strbuf_release(&ref_name);
 	strbuf_release(&err);
 }
 
@@ -2806,6 +2801,8 @@ static void parse_new_commit(const char *arg)
 static void parse_new_tag(const char *arg)
 {
 	static struct strbuf msg = STRBUF_INIT;
+	static struct strbuf refname = STRBUF_INIT;
+	char *tagname;
 	const char *from;
 	char *tagger;
 	struct branch *s;
@@ -2815,16 +2812,20 @@ static void parse_new_tag(const char *arg)
 	enum object_type type;
 	const char *v;
 
-	t = mem_pool_alloc(&fi_mem_pool, sizeof(struct tag));
-	memset(t, 0, sizeof(struct tag));
-	t->name = mem_pool_strdup(&fi_mem_pool, arg);
-	if (last_tag)
-		last_tag->next_tag = t;
-	else
-		first_tag = t;
-	last_tag = t;
+	tagname = xstrdup(arg);
+
 	read_next_command();
 	parse_mark();
+
+	/* refname ... */
+	strbuf_reset(&refname);
+	if (skip_prefix(command_buf.buf, "refname ", &v)) {
+		strbuf_addstr(&refname, v);
+		read_next_command();
+	} else {
+		strbuf_addstr(&refname, "refs/tags/");
+		strbuf_addstr(&refname, tagname);
+	}
 
 	/* from ... */
 	if (!skip_prefix(command_buf.buf, "from ", &from))
@@ -2873,13 +2874,23 @@ static void parse_new_tag(const char *arg)
 		    "object %s\n"
 		    "type %s\n"
 		    "tag %s\n",
-		    oid_to_hex(&oid), type_name(type), t->name);
+		    oid_to_hex(&oid), type_name(type), tagname);
 	if (tagger)
 		strbuf_addf(&new_data,
 			    "tagger %s\n", tagger);
 	strbuf_addch(&new_data, '\n');
 	strbuf_addbuf(&new_data, &msg);
 	free(tagger);
+	free(tagname);
+
+	t = mem_pool_alloc(&fi_mem_pool, sizeof(struct tag));
+	memset(t, 0, sizeof(struct tag));
+	t->refname = mem_pool_strdup(&fi_mem_pool, refname.buf);
+	if (last_tag)
+		last_tag->next_tag = t;
+	else
+		first_tag = t;
+	last_tag = t;
 
 	if (store_object(OBJ_TAG, &new_data, NULL, &t->oid, next_mark))
 		t->pack_id = MAX_PACK_ID;
@@ -2918,7 +2929,7 @@ static void parse_reset_branch(const char *arg)
 		 */
 		struct tag *t, *prev = NULL;
 		for (t = first_tag; t; t = t->next_tag) {
-			if (!strcmp(t->name, tag_name))
+			if (!strcmp(t->refname, b->name))
 				break;
 			prev = t;
 		}
