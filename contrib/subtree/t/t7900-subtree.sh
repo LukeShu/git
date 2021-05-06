@@ -1437,7 +1437,7 @@ test_expect_success 'push split to subproj' '
 
 test_expect_success 'subtree descendant check' '
 	subtree_test_create_repo "$test_count" &&
-	defaultBranch=$(sed "s,ref: refs/heads/,," "$test_count/.git/HEAD") &&
+	defaultBranch=$(git -C "$test_count" symbolic-ref --short HEAD) &&
 	test_create_commit "$test_count" folder_subtree/a &&
 	(
 		cd "$test_count" &&
