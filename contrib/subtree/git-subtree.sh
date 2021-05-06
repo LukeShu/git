@@ -548,6 +548,7 @@ find_latest_squash () {
 				fi
 				debug "Squash found: $sq $sub"
 				echo "$sq" "$sub"
+				cat >/dev/null # drain `git log`, don't SIGPIPE it (we have pipefail set)
 				break
 			fi
 			sq=
@@ -858,6 +859,7 @@ subtree_for_commit () {
 			continue
 		fi
 		echo "$tree"
+		cat >/dev/null # drain `git ls-tree`, don't SIGPIPE it (we have pipefail set)
 		break
 	done || exit $?
 }
