@@ -473,7 +473,7 @@ cache_set () {
 		then
 			local parents
 			parents=$(git rev-parse "$val^@") ||
-				die "could not read parents of commit $val"
+				die "could not read parents of commit '$val'"
 			local parent
 			for parent in $parents
 			do
@@ -523,8 +523,8 @@ find_latest_squash () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^{commit}" 2>/dev/null)" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit $sq"
+			sub="$(git rev-parse -q --verify "$b^{commit}")" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$sq'"
 			;;
 		END)
 			if test -z "$sub"
@@ -541,8 +541,8 @@ find_latest_squash () {
 					debug "  git-subtree-split:    '$sub'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
-					sq=$(git rev-parse --verify "$sq^2") ||
-						die
+					sq="$(git rev-parse -q --verify "$sq^2")" ||
+						die "could not get second parent of --rejoin merge commit '$sq'"
 				fi
 				debug "Squash found: $sq $sub"
 				echo "$sq" "$sub"
@@ -652,8 +652,8 @@ split_process_annotated_commits () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^{commit}" 2>/dev/null)" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit $sq"
+			sub="$(git rev-parse -q --verify "$b^{commit}")" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$sq'"
 			;;
 		END)
 			if test -z "$sub"
@@ -837,7 +837,8 @@ squash_msg () {
 toptree_for_commit () {
 	assert test $# = 1
 	local commit="$1"
-	git rev-parse --verify "$commit^{tree}" || exit $?
+	git rev-parse -q --verify "$commit^{tree}" ||
+		die "could not resolve tree for commit '$commit'"
 }
 
 # Usage: subtree_for_commit COMMIT
@@ -1012,7 +1013,7 @@ split_list_relevant_parents () {
 
 	local parents
 	parents=$(git rev-parse "$rev^@") ||
-		die "could not read parents of commit $rev"
+		die "could not read parents of commit '$rev'"
 
 	# If  (1.a) this is a simple 2-way merge,
 	# and (1.b) one of the parents has the subtree,
@@ -1468,7 +1469,8 @@ cmd_add_commit () {
 	# need to normalize it.
 	assert test $# = 1
 	local rev
-	rev=$(git rev-parse --verify "$1^{commit}") || exit $?
+	rev=$(git rev-parse -q --verify "$1^{commit}") ||
+		die "'$1' does not refer to a commit"
 
 	debug "Adding $dir as '$rev'..."
 	if test -z "$arg_split_rejoin"
@@ -1480,7 +1482,8 @@ cmd_add_commit () {
 	git checkout -- "$dir" || exit $?
 	tree=$(git write-tree) || exit $?
 
-	headrev=$(git rev-parse HEAD) || exit $?
+	headrev=$(git rev-parse HEAD) ||
+		die "'HEAD' does not refer to a commit"
 	if test -n "$headrev" && test "$headrev" != "$rev"
 	then
 		headp="-p $headrev"
