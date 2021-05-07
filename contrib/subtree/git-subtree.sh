@@ -1173,7 +1173,19 @@ reduce_commits() {
 
 	# First (no-op) iteration
 	touch "$tmpdir/in"
-	xargs printf '%s\n' > "$tmpdir/out"
+	# The 'grep .' is for versions of xargs (GNU and OpenBSD) that
+	# run the command on empty input.  We use grep instead of
+	# passing xargs the -r/--no-run-if-empty option because some
+	# versions of xargs (macOS) don't have that option.
+	xargs printf '%s\n' | { grep . || true; } >"$tmpdir/out"
+
+	# Check for the trivial case
+	if test "$(wc -l <"$tmpdir/out")" -le 1
+	then
+		cat "$tmpdir/out"
+		rm -rf -- "$tmpdir"
+		return
+	fi
 
 	# Do we need to run again?
 	#  (first iteration: yes, unless the input was empty)
@@ -1182,7 +1194,8 @@ reduce_commits() {
 	while test "$(wc -l <"$tmpdir/out")" -ne "$(wc -l <"$tmpdir/in")"
 	do
 		mv "$tmpdir/out" "$tmpdir/in"
-		<"$tmpdir/in" xargs git merge-base --independent -- >"$tmpdir/out.tmp" || die
+		<"$tmpdir/in" xargs git merge-base --independent -- >"$tmpdir/out.tmp" ||
+			die "reduce_commits: 'git merge-base --independent' failed"
 		<"$tmpdir/out.tmp" sort --random-sort --unique >"$tmpdir/out"
 	done
 
@@ -1197,7 +1210,7 @@ is_related() {
 	local tmpfile
 	tmpfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
 
-	reduce_commits > "$tmpfile"
+	reduce_commits >"$tmpfile"
 	local result=1
 	while read -r other
 	do
