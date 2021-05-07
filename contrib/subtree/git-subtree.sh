@@ -515,8 +515,6 @@ find_latest_squash () {
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$@" |
 	while read -r a b junk
 	do
-		debug "$a $b $junk"
-		debug "{{$sq/$main/$sub}}"
 		case "$a" in
 		START)
 			sq="$b"
@@ -525,8 +523,8 @@ find_latest_squash () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^{commit}")" ||
-			die "could not rev-parse split hash $b from commit $sq"
+			sub="$(git rev-parse "$b^{commit}" 2>/dev/null)" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit $sq"
 			;;
 		END)
 			if test -z "$sub"
@@ -654,8 +652,8 @@ split_process_annotated_commits () {
 			main="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse "$b^{commit}")" ||
-			die "could not rev-parse split hash $b from commit $sq"
+			sub="$(git rev-parse "$b^{commit}" 2>/dev/null)" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit $sq"
 			;;
 		END)
 			if test -z "$sub"
@@ -1243,8 +1241,9 @@ split_classify_commit () {
 			m_mainline="$b"
 			;;
 		git-subtree-split:)
-			m_split="$(git rev-parse "$b^{commit}")" ||
-			die "could not rev-parse split hash $b from commit $rev"
+			# Don't bother with resolving "$b^{commit}"`
+			# here, we just care about empty/non-empty.
+			m_split="$b"
 			;;
 		esac
 	done <<<"$msg"
