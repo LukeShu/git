@@ -484,17 +484,6 @@ cache_set () {
 	esac
 }
 
-# Usage: rev_exists REV
-rev_exists () {
-	assert test $# = 1
-	if git rev-parse "$1" >/dev/null 2>&1
-	then
-		return 0
-	else
-		return 1
-	fi
-}
-
 # Usage: find_latest_squash REVS...
 #
 # Print a pair "A B", where:
@@ -1667,7 +1656,7 @@ cmd_split () {
 	if test -n "$arg_split_branch"
 	then
 		local action
-		if rev_exists "refs/heads/$arg_split_branch"
+		if git rev-parse -q --verify "refs/heads/$arg_split_branch" >/dev/null
 		then
 			if ! git merge-base --is-ancestor "$arg_split_branch" "$latest_split"
 			then
