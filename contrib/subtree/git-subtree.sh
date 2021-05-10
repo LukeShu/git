@@ -511,6 +511,7 @@ find_latest_squash () {
 	local main=
 	local sub=
 	local a b junk
+	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="^git-subtree-dir: $dir/*\$" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$@" |
 	while read -r a b junk
@@ -640,6 +641,7 @@ split_process_annotated_commits () {
 	local main=
 	local sub=
 	local a b junk
+	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$rev" |
 	while read -r a b junk
@@ -1230,6 +1232,7 @@ split_classify_commit () {
 	local msg m_dir='' m_mainline='' m_split=''
 	msg=$(git show --no-patch --no-show-signature --pretty=format:'%B' "$rev") || exit $?
 	local a b junk
+	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	while read -r a b junk
 	do
 		case "$a" in
@@ -1366,13 +1369,17 @@ split_process_commit () {
 	squash)
 		debug "squash"
 		local a b junk
-		git show --no-patch --no-show-signature --pretty=format:'%B' "$rev" | while read -r a b junk
+		# shellcheck disable=SC2034 # we don't use the 'junk' field
+		git show --no-patch \
+			--no-show-signature --pretty=format:'%B' "$rev" |
+		while read -r a b junk
 		do
-			if test "$a" = 'git-subtree-split:'
-			then
+			case "$1" in
+			git-subtree-split:)
 				cache_set "$rev" "$b"
 				var_set latest_split "$b"
-			fi
+				;;
+			esac
 		done || exit $?
 		;;
 	*)
