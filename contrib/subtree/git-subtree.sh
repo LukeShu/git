@@ -496,9 +496,7 @@ find_latest_squash () {
 	debug "Pre-loading cache with latest squash ($dir)..."
 	local indent=$(($indent + 1))
 
-	local sq=
-	local main=
-	local sub=
+	local m_rev='' m_mainline='' m_split=''
 	local a b junk
 	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="^git-subtree-dir: $dir/*\$" \
@@ -507,41 +505,41 @@ find_latest_squash () {
 	do
 		case "$a" in
 		START)
-			sq="$b"
+			m_rev="$b"
 			;;
 		git-subtree-mainline:)
-			main="$b"
+			m_mainline="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse -q --verify "$b^{commit}")" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit '$sq'"
+			m_split="$(git rev-parse -q --verify "$b^{commit}")" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev'"
 			;;
 		END)
-			if test -z "$sub"
+			if test -z "$m_split"
 			then
-				debug "prior malformed commit: $sq"
+				debug "prior malformed commit: $m_rev"
 			else
-				if test -z "$main"
+				if test -z "$m_mainline"
 				then
-					debug "prior --squash: $sq"
-					debug "  git-subtree-split: '$sub'"
+					debug "prior --squash: $m_rev"
+					debug "  git-subtree-split: '$m_split'"
 				else
-					debug "prior --rejoin: $sq"
-					debug "  git-subtree-mainline: '$main'"
-					debug "  git-subtree-split:    '$sub'"
+					debug "prior --rejoin: $m_rev"
+					debug "  git-subtree-mainline: '$m_mainline'"
+					debug "  git-subtree-split:    '$m_split'"
 					# a rejoin commit?
 					# Pretend its sub was a squash.
-					sq="$(git rev-parse -q --verify "$sq^2")" ||
-						die "could not get second parent of --rejoin merge commit '$sq'"
+					m_rev="$(git rev-parse -q --verify "$m_rev^2")" ||
+						die "could not get second parent of --rejoin merge commit '$m_rev'"
 				fi
-				debug "Squash found: $sq $sub"
-				echo "$sq" "$sub"
+				debug "Squash found: $m_rev $m_split"
+				echo "$m_rev" "$m_split"
 				cat >/dev/null # drain `git log`, don't SIGPIPE it (we have pipefail set)
 				break
 			fi
-			sq=
-			main=
-			sub=
+			m_rev=
+			m_mainline=
+			m_split=
 			;;
 		esac
 	done || exit $?
@@ -626,9 +624,7 @@ split_process_annotated_commits () {
 
 	local count=0
 	progress "Pre-loading cache with prior annotated commits... $count"
-	local sq=
-	local main=
-	local sub=
+	local m_rev='' m_mainline='' m_split=''
 	local a b junk
 	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="$grep_format" \
@@ -637,55 +633,55 @@ split_process_annotated_commits () {
 	do
 		case "$a" in
 		START)
-			sq="$b"
+			m_rev="$b"
 			;;
 		git-subtree-mainline:)
-			main="$b"
+			m_mainline="$b"
 			;;
 		git-subtree-split:)
-			sub="$(git rev-parse -q --verify "$b^{commit}")" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit '$sq'"
+			m_split="$(git rev-parse -q --verify "$b^{commit}")" ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev'"
 			;;
 		END)
-			if test -z "$sub"
+			if test -z "$m_split"
 			then
-				debug "prior malformed commit: $sq"
+				debug "prior malformed commit: $m_rev"
 			else
-				if test -z "$main"
+				if test -z "$m_mainline"
 				then
-					debug "prior --squash: $sq"
-					debug "  git-subtree-split: '$sub'"
-					cache_set "$sq" "$sub"
+					debug "prior --squash: $m_rev"
+					debug "  git-subtree-split: '$m_split'"
+					cache_set "$m_rev" "$m_split"
 				else
 					local mainline_tree split_tree
-					mainline_tree=$(subtree_for_commit "$main")
-					split_tree=$(toptree_for_commit "$sub")
+					mainline_tree=$(subtree_for_commit "$m_mainline")
+					split_tree=$(toptree_for_commit "$m_split")
 
 					if test -z "$mainline_tree"
 					then
-						debug "prior add: $sq"
-						debug "  git-subtree-mainline: '$main'"
-						debug "  git-subtree-split:    '$sub'"
-						cache_set "$main" notree
+						debug "prior add: $m_rev"
+						debug "  git-subtree-mainline: '$m_mainline'"
+						debug "  git-subtree-split:    '$m_split'"
+						cache_set "$m_mainline" notree
 					elif test "$mainline_tree" = "$split_tree"
 					then
-						debug "prior --rejoin: $sq"
-						debug "  git-subtree-mainline: '$main'"
-						debug "  git-subtree-split:    '$sub'"
-						cache_set "$main" "$sub"
+						debug "prior --rejoin: $m_rev"
+						debug "  git-subtree-mainline: '$m_mainline'"
+						debug "  git-subtree-split:    '$m_split'"
+						cache_set "$m_mainline" "$m_split"
 					else
 						# `git subtree merge` doesn't currently do this, but it wouldn't be a
 						# bad idea.
-						debug "prior merge: $sq"
-						debug "  git-subtree-mainline: '$main'"
-						debug "  git-subtree-split:    '$sub'"
+						debug "prior merge: $m_rev"
+						debug "  git-subtree-mainline: '$m_mainline'"
+						debug "  git-subtree-split:    '$m_split'"
 					fi
-					cache_set "$sub" "$sub"
+					cache_set "$m_split" "$m_split"
 				fi
 			fi
-			sq=
-			main=
-			sub=
+			m_rev=
+			m_mainline=
+			m_split=
 			count=$(($count + 1))
 			progress "Pre-loading cache with prior annotated commits... $count"
 			;;
