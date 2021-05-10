@@ -513,7 +513,7 @@ find_latest_squash () {
 	local a b junk
 	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="^git-subtree-dir: $dir/*\$" \
-		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$@" |
+		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$@" |
 	while read -r a b junk
 	do
 		case "$a" in
@@ -643,7 +643,7 @@ split_process_annotated_commits () {
 	local a b junk
 	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="$grep_format" \
-		--no-show-signature --pretty=format:'START %H%n%s%n%n%b%nEND%n' "$rev" |
+		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
 	while read -r a b junk
 	do
 		case "$a" in
