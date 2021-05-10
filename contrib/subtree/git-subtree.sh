@@ -511,7 +511,7 @@ find_latest_squash () {
 	local rev="$1"
 	local indent=$(($indent + 1))
 
-	local m_rev='' m_mainline='' m_split=''
+	local m_rev='' m_mainline='' m_split='' p_parents=() p_mainline='' p_split=''
 	local a b
 	git log --grep="^git-subtree-dir: $dir/*\$" \
 		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
@@ -522,21 +522,33 @@ find_latest_squash () {
 			m_rev="$b"
 			;;
 		git-subtree-mainline:)
-			m_mainline="$b"
+			m_mainline=$(resolve_commit "$b") ||
+				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
+			test "$m_mainline" = "$b" ||
+				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
 			;;
 		git-subtree-split:)
-			m_split="$(git rev-parse -q --verify "$b^{commit}")" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev'"
+			m_split=$(resolve_commit "$b") ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev';" \
+				    "you may need to fetch squashed history before running this command"
 			;;
 		END)
 			if test -z "$m_split"
 			then
-				debug "prior malformed commit: $m_rev"
+				debug "prior commit '$m_rev' is malformed: has git-subtree-dir but not git-subtree-split"
 			else
 				if test -z "$m_mainline"
 				then
 					debug "prior --squash: $m_rev"
 					debug "  git-subtree-split: '$m_split'"
+
+					# Sanity check the commit.
+					test "$(toptree_for_commit "$m_split")" = "$(toptree_for_commit "$m_rev")" ||
+						die "prior --squash commit '$m_rev' does not match the commit it purports to be a squash of"
+
+					# OK, record that $m_rev is a --squash of $m_split
+					debug "find_latest_squash: Found --squash: $m_rev $m_split"
+					echo "$m_rev" "$m_split"
 				else
 					debug "prior --rejoin or add: $m_rev"
 					debug "  git-subtree-mainline: '$m_mainline'"
@@ -545,13 +557,55 @@ find_latest_squash () {
 					#
 					# We need to to consider this information, in order to facilitate
 					# transitioning from non-squashed to squashed history.
-					#
-					# Pretend its sub was a squash.
-					m_rev="$(git rev-parse -q --verify "$m_rev^2")" ||
-						die "could not get second parent of --rejoin merge commit '$m_rev'"
+
+					# Sanity check that $m_mainline and $m_split reflect the actual
+					# commit graph of $m_rev.
+
+					# shellcheck disable=SC2207 # *grumble* I don't have `mapfile`
+					p_parents=($(git rev-parse "$m_rev^@"))
+					test ${#p_parents[@]} = 2 ||
+						die "prior merge commit '$m_rev' is malformed: wrong number of parents"
+					p_mainline=$(resolve_commit "${p_parents[0]}") ||
+						die "could not resolve first parent of subtree merge commit '$m_rev'"
+					p_split=$(resolve_commit "${p_parents[1]}") ||
+						die "could not resolve second parent of subtree merge commit '$m_rev'"
+					test "$p_mainline" = "$m_mainline" ||
+						die "prior commit '$m_rev' is malformed: git-subtree-mainline:'$m_mainline' != ^1:'$p_mainline'"
+					if test "$p_split" != "$m_split"
+					then
+						# This is allowed to happen if $m_rev is a --squash --rejoin.
+						# So validate that $p_split as a --squash commit.
+						local s_msg s_dir='' s_split=''
+						s_msg=$(git show --no-patch --no-show-signature --pretty=format:'%B' "$p_split") || exit $?
+						while read -r a b
+						do
+							case "$a" in
+								git-subtree-dir:)
+									# shellcheck disable=SC2001 # this would be clunky to do without sed
+									s_dir="$(sed 's,/*$,,' <<<"$b")"
+									;;
+								git-subtree-mainline:)
+									die "a: parent commit '$p_split' does not match 'git-subtree-split: $m_split' in merge commit '$m_rev'"
+									;;
+								git-subtree-split:)
+									s_split=$(resolve_commit "$b") ||
+										die "could not rev-parse 'git-subtree-split: $b' from commit '$p_split';" \
+										    "you may need to fetch squashed history before running this command"
+									;;
+							esac
+						done <<<"$s_msg"
+						test "$s_dir" = "$dir" ||
+							die "parent commit '$p_split' does not match 'git-subtree-dir: $dir' in merge commit '$m_rev'"
+						test "$s_split" = "$m_split" ||
+							die "b: parent commit '$p_split' does not match 'git-subtree-split: $m_split' in merge commit '$m_rev'"
+						test "$(toptree_for_commit "$s_split")" = "$(toptree_for_commit "$p_split")" ||
+							die "prior --squash commit '$p_split' does not match the commit it purports to be a squash of"
+					fi
+
+					# OK, record that $p_split itself was merged
+					debug "find_latest_squash: Found --rejoin: $p_split $m_split"
+					echo "$p_split" "$m_split"
 				fi
-				debug "Squash found: $m_rev $m_split"
-				echo "$m_rev" "$m_split"
 				cat >/dev/null # drain `git log`, don't SIGPIPE it (we have pipefail set)
 				break
 			fi
@@ -645,7 +699,7 @@ split_process_annotated_commits () {
 
 	local count=0
 	progress "Pre-loading cache with prior annotated commits... $count"
-	local m_rev='' m_mainline='' m_split=''
+	local m_rev='' m_mainline='' m_split='' p_parents=() p_mainline='' p_split=''
 	local a b
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
@@ -656,24 +710,79 @@ split_process_annotated_commits () {
 			m_rev="$b"
 			;;
 		git-subtree-mainline:)
-			m_mainline="$b"
+			m_mainline=$(resolve_commit "$b") ||
+				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
+			test "$m_mainline" = "$b" ||
+				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
 			;;
 		git-subtree-split:)
-			m_split="$(git rev-parse -q --verify "$b^{commit}")" ||
-				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev'"
+			m_split=$(resolve_commit "$b") ||
+				die "could not rev-parse 'git-subtree-split: $b' from commit '$m_rev';" \
+				    "you may need to fetch squashed history before running this command"
 			;;
 		END)
 			if test -z "$m_split"
 			then
-				debug "prior malformed commit: $m_rev"
+				debug "prior commit '$m_rev' is malformed: has git-subtree-dir but not git-subtree-split"
 			else
 				if test -z "$m_mainline"
 				then
 					debug "prior --squash: $m_rev"
 					debug "  git-subtree-split: '$m_split'"
+
+					# Sanity check the commit.
+					test "$(toptree_for_commit "$m_split")" = "$(toptree_for_commit "$m_rev")" ||
+						die "prior --squash commit '$m_rev' does not match the commit it purports to be a squash of"
+
 					cache_set "$m_rev" "$m_split"
 				else
 					touch "$scratchdir/has-been-added"
+
+					# Sanity check that $m_mainline and $m_split reflect the actual
+					# commit graph of $m_rev.
+
+					# shellcheck disable=SC2207 # *grumble* I don't have `mapfile`
+					p_parents=($(git rev-parse "$m_rev^@"))
+					test ${#p_parents[@]} = 2 ||
+						die "prior merge commit '$m_rev' is malformed: wrong number of parents"
+					p_mainline=$(resolve_commit "${p_parents[0]}") ||
+						die "could not resolve first parent of subtree merge commit '$m_rev'"
+					p_split=$(resolve_commit "${p_parents[1]}") ||
+						die "could not resolve second parent of subtree merge commit '$m_rev'"
+					test "$p_mainline" = "$m_mainline" ||
+						die "prior commit '$m_rev' is malformed: git-subtree-mainline:'$m_mainline' != ^1:'$p_mainline'"
+					if test "$p_split" != "$m_split"
+					then
+						# This is allowed to happen if $m_rev is a --squash --rejoin.
+						# So validate that $p_split as a --squash commit.
+						local s_msg s_dir='' s_split=''
+						s_msg=$(git show --no-patch --no-show-signature --pretty=format:'%B' "$p_split") || exit $?
+						while read -r a b
+						do
+							case "$a" in
+								git-subtree-dir:)
+									# shellcheck disable=SC2001 # this would be clunky to do without sed
+									s_dir="$(sed 's,/*$,,' <<<"$b")"
+									;;
+								git-subtree-mainline:)
+									die "c: parent commit '$p_split' does not match 'git-subtree-split: $m_split' in merge commit '$m_rev'"
+									;;
+								git-subtree-split:)
+									s_split=$(resolve_commit "$b") ||
+										die "could not rev-parse 'git-subtree-split: $b' from commit '$p_split';" \
+										    "you may need to fetch squashed history before running this command"
+									;;
+							esac
+						done <<<"$s_msg"
+						test "$s_dir" = "$dir" ||
+							die "parent commit '$p_split' does not match 'git-subtree-dir: $dir' in merge commit '$m_rev'"
+						test "$s_split" = "$m_split" ||
+							die "d: parent commit '$p_split' does not match 'git-subtree-split: $m_split' in merge commit '$m_rev'"
+						test "$(toptree_for_commit "$s_split")" = "$(toptree_for_commit "$p_split")" ||
+							die "prior --squash commit '$p_split' does not match the commit it purports to be a squash of"
+					fi
+
+					# Proceed to further analyze the commit.
 					local mainline_tree split_tree
 					mainline_tree=$(subtree_for_commit "$m_mainline")
 					split_tree=$(toptree_for_commit "$m_split")
@@ -1253,6 +1362,8 @@ split_classify_commit () {
 			m_dir="$(sed 's,/*$,,' <<<"$b")"
 			;;
 		git-subtree-mainline:)
+			# Don't bother with resolving "$b^{commit}"`
+			# here, we just care about empty/non-empty.
 			m_mainline="$b"
 			;;
 		git-subtree-split:)
