@@ -484,23 +484,25 @@ cache_set () {
 	esac
 }
 
-# Usage: find_latest_squash REVS...
+# Usage: find_latest_squash REV
 #
-# Print a pair "A B", where:
-# - A is the latest in-mainline-subtree-commit (either a real
-#   subtree-commit, or a squashed subtree-commit)
-# - B is the corresponding real subtree-commit (just A again, unless
-#   --squash)
+# Print the most recent "maybe_squashed_commit orig_commit" pair (as
+# judged by looking at the history of REV), to use as the starting
+# point for new squash commits.
+#
+# Because it is possible to switch from non-squashed history to using
+# --squash for subsequent merges, the "maybe_squashed_commit" may or
+# may not actually be squashed.
 find_latest_squash () {
-	assert test $# -gt 0
-	debug "Pre-loading cache with latest squash ($dir)..."
+	assert test $# = 1
+	local rev="$1"
 	local indent=$(($indent + 1))
 
 	local m_rev='' m_mainline='' m_split=''
 	local a b junk
 	# shellcheck disable=SC2034 # we don't use the 'junk' field
 	git log --grep="^git-subtree-dir: $dir/*\$" \
-		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$@" |
+		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
 	while read -r a b junk
 	do
 		case "$a" in
@@ -524,10 +526,14 @@ find_latest_squash () {
 					debug "prior --squash: $m_rev"
 					debug "  git-subtree-split: '$m_split'"
 				else
-					debug "prior --rejoin: $m_rev"
+					debug "prior --rejoin or add: $m_rev"
 					debug "  git-subtree-mainline: '$m_mainline'"
 					debug "  git-subtree-split:    '$m_split'"
-					# a rejoin commit?
+					# A '--rejoin' or 'add' commit?
+					#
+					# We need to to consider this information, in order to facilitate
+					# transitioning from non-squashed to squashed history.
+					#
 					# Pretend its sub was a squash.
 					m_rev="$(git rev-parse -q --verify "$m_rev^2")" ||
 						die "could not get second parent of --rejoin merge commit '$m_rev'"
@@ -656,6 +662,7 @@ split_process_annotated_commits () {
 					debug "  git-subtree-split: '$m_split'"
 					cache_set "$m_rev" "$m_split"
 				else
+					touch "$scratchdir/has-been-added"
 					local mainline_tree split_tree
 					mainline_tree=$(subtree_for_commit "$m_mainline")
 					split_tree=$(toptree_for_commit "$m_split")
@@ -1648,13 +1655,11 @@ cmd_split () {
 	then
 		debug "Merging split branch into HEAD..."
 		arg_addmerge_message="$(rejoin_msg)" || exit $?
-		local latest_squash
-		latest_squash=$(find_latest_squash "$rev") || exit $?
-		if test -z "$latest_squash"
+		if test -e "$scratchdir/has-been-added"
 		then
-			cmd_add "$latest_split" >&2 || exit $?
-		else
 			cmd_merge "$latest_split" >&2 || exit $?
+		else
+			cmd_add "$latest_split" >&2 || exit $?
 		fi
 	fi
 
