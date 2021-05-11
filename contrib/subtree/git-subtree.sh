@@ -124,6 +124,19 @@ assert () {
 	fi
 }
 
+# Usage: resolve_commit REV
+resolve_commit () {
+	assert test $# = 1
+	local rev _rev
+	rev=$(git rev-parse -q --verify "$1^{commit}") ||
+		return 1
+	while _rev=$(git rev-parse -q --verify "refs/replace/$rev^{commit}")
+	do
+		rev=$_rev
+	done
+	echo "$rev"
+}
+
 main () {
 	if test $# -eq 0
 	then
@@ -236,13 +249,13 @@ main () {
 			;;
 		--onto)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_onto+=("$(git rev-parse -q --verify "$1^{commit}")") ||
+			arg_split_onto+=("$(resolve_commit "$1")") ||
 				die "'$1' does not refer to a commit"
 			shift
 			;;
 		--notree)
 			test -n "$allow_split" || die "The '$opt' flag does not make sense with 'git subtree $arg_command'."
-			arg_split_notree+=("$(git rev-parse -q --verify "$1^{commit}")") ||
+			arg_split_notree+=("$(resolve_commit "$1")") ||
 				die "'$1' does not refer to a commit"
 			shift
 			;;
@@ -1393,9 +1406,9 @@ split_process_commit () {
 split_remember () {
 	assert test $# = 2
 	local before after
-	before=$(git rev-parse -q --verify "$1^{commit}") ||
+	before=$(resolve_commit "$1") ||
 		die "'$1' does not refer to a commit"
-	after=$(git rev-parse -q --verify "$2^{commit}") ||
+	after=$(resolve_commit "$2") ||
 		die "'$2' does not refer to a commit"
 
 	# validate: trees
@@ -1473,7 +1486,7 @@ cmd_add_commit () {
 	# need to normalize it.
 	assert test $# = 1
 	local rev
-	rev=$(git rev-parse -q --verify "$1^{commit}") ||
+	rev=$(resolve_commit "$1") ||
 		die "'$1' does not refer to a commit"
 
 	debug "Adding $dir as '$rev'..."
@@ -1524,7 +1537,7 @@ cmd_split () {
 		rev=$(git rev-parse HEAD)
 		;;
 	1)
-		rev=$(git rev-parse -q --verify "$1^{commit}") ||
+		rev=$(resolve_commit "$1") ||
 			die "'$1' does not refer to a commit"
 		;;
 	*)
@@ -1685,7 +1698,7 @@ cmd_merge () {
 	test $# -eq 1 ||
 		die "You must provide exactly one revision.  Got: '$*'"
 	local rev
-	rev=$(git rev-parse -q --verify "$1^{commit}") ||
+	rev=$(resolve_commit "$1") ||
 		die "'$1' does not refer to a commit"
 	debug "rev: {$rev}"
 	debug
@@ -1763,7 +1776,7 @@ cmd_push () {
 		esac
 		ensure_valid_ref_format "$remoteref"
 		local localrev_presplit
-		localrev_presplit=$(git rev-parse -q --verify "$localrevname_presplit^{commit}") ||
+		localrev_presplit=$(resolve_commit "$localrevname_presplit") ||
 			die "'$localrevname_presplit' does not refer to a commit"
 		debug
 
