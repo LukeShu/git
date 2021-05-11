@@ -427,7 +427,7 @@ test_expect_success 'split "sub dir"/ with --rejoin and --squash' '
 	)
 '
 
-test_expect_success 'split then pull "sub dir"/ with --rejoin and --squash' '
+test_expect_failure 'split then pull "sub dir"/ with --rejoin and --squash' '
 	# 1. "add"
 	subtree_test_create_repo "$test_count" &&
 	subtree_test_create_repo "$test_count/sub proj" &&
@@ -445,7 +445,16 @@ test_expect_success 'split then pull "sub dir"/ with --rejoin and --squash' '
 	test_create_commit "$test_count/sub proj" sub2 &&
 	git -C "$test_count" subtree --prefix="sub dir" pull --squash ./"sub proj" HEAD &&
 
-	test_must_fail git merge-base HEAD FETCH_HEAD
+	test_must_fail git -C "$test_count" merge-base HEAD FETCH_HEAD &&
+
+	# 5. commit from parent
+	test_create_commit "$test_count" "sub dir"/main-sub2 &&
+
+	# 6. "push --rejoin --squash"
+	git -C "$test_count" subtree -d --prefix="sub dir" push --rejoin --squash ./"sub proj" from-main &&
+
+	git -C "$test_count" fetch ./"sub proj" from-main &&
+	test_must_fail git -C "$test_count" merge-base HEAD FETCH_HEAD
 '
 
 test_expect_success 'split "sub dir"/ with --branch' '
