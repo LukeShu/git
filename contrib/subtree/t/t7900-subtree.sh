@@ -443,7 +443,7 @@ test_expect_success 'split then pull "sub dir"/ with --rejoin and --squash' '
 
 	# 4. "pull --squash"
 	test_create_commit "$test_count/sub proj" sub2 &&
-	git -C "$test_count" subtree -d --prefix="sub dir" pull --squash ./"sub proj" HEAD &&
+	git -C "$test_count" subtree --prefix="sub dir" pull --squash ./"sub proj" HEAD &&
 
 	test_must_fail git merge-base HEAD FETCH_HEAD
 '
