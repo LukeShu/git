@@ -579,7 +579,7 @@ split_process_annotated_commits () {
 	# stupid that this doesn't look like 'add' and 'split
 	# --rejoin').
 
-	# A 'split --rejoin' (with or without '--squash') looks like:
+	# A 'split --rejoin' looks like:
 	#
 	#     ,-mainline
 	#     | ,-subtree
@@ -619,8 +619,11 @@ split_process_annotated_commits () {
 	#
 	# If the operation was an 'add' or a 'merge', then "H" looks
 	# like a regular commit with no special markers.  If the
-	# operation was a 'split --rejoin', then "H" looks as
-	# described for 'split --rejoin' above.
+	# operation was a 'split --rejoin', then "H" looks like
+	#
+	#   git-subtree-dir: $dir
+	#   git-subtree-mainline: $o
+	#   git-subtree-split: $S
 
 	local count=0
 	progress "Pre-loading cache with prior annotated commits... $count"
@@ -1211,6 +1214,12 @@ is_related() {
 }
 
 # Usage: split_classify_commit REV
+#
+# Classify a given REV as either
+#  - 'split'
+#  - 'squash' (like 'split', but with squashed history)
+#  - 'mainline:tree'
+#  - 'mainline-notree'
 split_classify_commit () {
 	assert test $# = 1
 	local rev="$1"
@@ -1244,7 +1253,7 @@ split_classify_commit () {
 			echo 'squash'
 			return
 		else
-			# Prior --rejoin
+			# Prior add or --rejoin
 			if test -z "$arg_split_ignore_joins"
 			then
 				echo 'mainline:tree'
