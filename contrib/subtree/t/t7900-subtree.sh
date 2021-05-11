@@ -427,7 +427,7 @@ test_expect_success 'split "sub dir"/ with --rejoin and --squash' '
 	)
 '
 
-test_expect_failure 'split then pull "sub dir"/ with --rejoin and --squash' '
+test_expect_success 'split then pull "sub dir"/ with --rejoin and --squash' '
 	# 1. "add"
 	subtree_test_create_repo "$test_count" &&
 	subtree_test_create_repo "$test_count/sub proj" &&

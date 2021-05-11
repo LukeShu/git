@@ -499,11 +499,10 @@ find_latest_squash () {
 	local indent=$(($indent + 1))
 
 	local m_rev='' m_mainline='' m_split=''
-	local a b junk
-	# shellcheck disable=SC2034 # we don't use the 'junk' field
+	local a b
 	git log --grep="^git-subtree-dir: $dir/*\$" \
 		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
-	while read -r a b junk
+	while read -r a b
 	do
 		case "$a" in
 		START)
@@ -634,11 +633,10 @@ split_process_annotated_commits () {
 	local count=0
 	progress "Pre-loading cache with prior annotated commits... $count"
 	local m_rev='' m_mainline='' m_split=''
-	local a b junk
-	# shellcheck disable=SC2034 # we don't use the 'junk' field
+	local a b
 	git log --grep="$grep_format" \
 		--no-show-signature --pretty=format:'START %H%n%B%nEND%n' "$rev" |
-	while read -r a b junk
+	while read -r a b
 	do
 		case "$a" in
 		START)
@@ -1233,9 +1231,8 @@ split_classify_commit () {
 
 	local msg m_dir='' m_mainline='' m_split=''
 	msg=$(git show --no-patch --no-show-signature --pretty=format:'%B' "$rev") || exit $?
-	local a b junk
-	# shellcheck disable=SC2034 # we don't use the 'junk' field
-	while read -r a b junk
+	local a b
+	while read -r a b
 	do
 		case "$a" in
 		git-subtree-dir:)
@@ -1370,11 +1367,10 @@ split_process_commit () {
 		;;
 	squash)
 		debug "squash"
-		local a b junk
-		# shellcheck disable=SC2034 # we don't use the 'junk' field
+		local a b
 		git show --no-patch \
 			--no-show-signature --pretty=format:'%B' "$rev" |
-		while read -r a b junk
+		while read -r a b
 		do
 			case "$1" in
 			git-subtree-split:)
