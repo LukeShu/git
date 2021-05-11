@@ -524,8 +524,8 @@ find_latest_squash () {
 		git-subtree-mainline:)
 			m_mainline=$(resolve_commit "$b") ||
 				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
-			test "$m_mainline" = "$b" ||
-				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
+			#test "$m_mainline" = "$b" ||
+			#	die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
 			;;
 		git-subtree-split:)
 			m_split=$(resolve_commit "$b") ||
@@ -712,8 +712,8 @@ split_process_annotated_commits () {
 		git-subtree-mainline:)
 			m_mainline=$(resolve_commit "$b") ||
 				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
-			test "$m_mainline" = "$b" ||
-				die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
+			#test "$m_mainline" = "$b" ||
+			#	die "could not rev-parse 'git-subtree-mainline: $b' from commit '$m_rev'"
 			;;
 		git-subtree-split:)
 			m_split=$(resolve_commit "$b") ||
