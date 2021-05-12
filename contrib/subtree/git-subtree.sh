@@ -130,10 +130,13 @@ resolve_commit () {
 	local rev _rev
 	rev=$(git rev-parse -q --verify "$1^{commit}") ||
 		return 1
-	while _rev=$(git rev-parse -q --verify "refs/replace/$rev^{commit}")
-	do
-		rev=$_rev
-	done
+	if test -z "${GIT_NO_REPLACE_OBJECTS:-}"
+	then
+		while _rev=$(git rev-parse -q --verify "refs/replace/$rev^{commit}")
+		do
+			rev=$_rev
+		done
+	fi
 	echo "$rev"
 }
 
