@@ -1671,7 +1671,7 @@ cmd_split () {
 
 	progress "Pre-loading cache with --remember'ed commits... 0"
 	local i=0 remember before after
-	for remember in "${arg_split_remember[@]}"
+	for remember in ${arg_split_remember+"${arg_split_remember[@]}"}
 	do
 		IFS=: read -r before after <<<"$remember"
 		split_remember "$before" "$after"
@@ -1682,7 +1682,7 @@ cmd_split () {
 
 	progress "Pre-loading cache with --onto commits... 0"
 	local i=0 onto
-	for onto in "${arg_split_onto[@]}"
+	for onto in ${arg_split_onto+"${arg_split_onto[@]}"}
 	do
 		debug "cli --onto: $onto"
 		cache_set "$onto" "$onto"
@@ -1693,7 +1693,7 @@ cmd_split () {
 
 	progress "Pre-loading cache with --notree commits... 0"
 	local i=0 notree
-	for notree in "${arg_split_notree[@]}"
+	for notree in ${arg_split_notree+"${arg_split_notree[@]}"}
 	do
 		debug "cli --notree: $notree"
 		cache_set "$notree" notree
