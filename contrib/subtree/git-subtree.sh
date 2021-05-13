@@ -406,6 +406,7 @@ attr_set () {
 	assert test $# = 2
 	local key="$1"
 	local val="$2"
+
 	debug "setting commit:$key += attr:$val"
 	echo "$val" >> "$scratchdir/attrs/$key"
 }
@@ -426,7 +427,7 @@ cache_set_internal () {
 		if test "$oldval" = "$val"
 		then
 			debug "  already cached: commit:$key = subtree_commit:$val"
-			cache_set_existed=true
+			cache_set_existed=true # in parent scope
 			return
 		elif test "$oldval" = counted
 		then
