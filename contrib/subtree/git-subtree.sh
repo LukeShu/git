@@ -650,9 +650,23 @@ split_process_annotated_commits () {
 	#   git-subtree-split: $S
 
 	# A 'merge' looks like a regular git merge.  There are no
-	# special markers in the commit message (BTW, it's absolutely
-	# stupid that this doesn't look like 'add' and 'split
-	# --rejoin').
+	# special markers in the commit message.
+	#
+	# One line of thinking is that it is stupid that this doesn't
+	# look like 'add' and 'split --rejoin'.  Don't make `split`
+	# guess if ^2 is a subtree commit or just a mainline commit
+	# without the subtree!
+	#
+	# Another line of thinking is that if a commit says both
+	# `git-subtree-mainline:` and `git-subtree-split:`, and the
+	# `-mainline:` commit contains the subtree, then the
+	# annotations are giving us a mainline->subtree mapping.
+	# Having a 'merge' contain those markers would not give a
+	# correct mapping.  We could try to validate the mapping by
+	# comparing the trees, but that would make it impossible to
+	# distinguish between a --rejoin merge and a regular merge,
+	# and being able to distinguish between them is important for
+	# being able avoid traversing more history than necessary.
 
 	# A 'split --rejoin' looks like:
 	#
@@ -803,11 +817,19 @@ split_process_annotated_commits () {
 						debug "  git-subtree-split:    '$m_split'"
 						cache_set "$m_mainline" "$m_split"
 					else
-						# `git subtree merge` doesn't currently do this, but it wouldn't be a
-						# bad idea.
-						debug "prior merge: $m_rev"
-						debug "  git-subtree-mainline: '$m_mainline'"
-						debug "  git-subtree-split:    '$m_split'"
+						# In the big comment above, it discusses whether `git subtree
+						# merge` should add `git-subtree-mainline:` and
+						# `git-subtree-split:` markers to the merge commit.  This
+						# 'else' block is that case it discusses.
+
+						# For now, consider it to be an error, because we're counting
+						# on it to be able to prune history.
+						die "prior commit '$m_rev' is malformed: 'git-subtree-mainline: $m_mainline' does not match 'git-subtree-split: $m_split'"
+
+						# But maybe one day we'll want to allow it:
+						#debug "prior merge: $m_rev"
+						#debug "  git-subtree-mainline: '$m_mainline'"
+						#debug "  git-subtree-split:    '$m_split'"
 					fi
 					cache_set "$m_split" "$m_split"
 				fi
@@ -1145,7 +1167,8 @@ split_list_relevant_parents () {
 	#
 	# If (1) is satisfied,
 	# and (2.a) the subtree-directory in mainline parent is identical to in the merge,
-	# and (2.b) the subtree parent is identical to the subtree-directory in the merge,
+	# and (2.b) the subtree parent IS identical to the subtree-directory in the merge,
+	# and (2.c) the commit contains git-subtree-XXX markers,
 	# then:
 	#
 	#  it is reasonably safe to assume that the merge is
@@ -1155,7 +1178,7 @@ split_list_relevant_parents () {
 	# On the other hand,
 	# if (1) is satisfied,
 	# and (3.a) the subtree-directory in mainline parent is identical to in the merge,
-	# and (3.b) the subtree parent is not identical to the subtree-directory in the merge,
+	# and (3.b) the subtree parent is NOT identical to the subtree-directory in the merge,
 	# and (3.c)
 	#   either (3.c.1) the merge differs from the mainline parent,
 	#   and/or (3.c.2) split_classify_commit doesn't classify the subtree parent as being part of our subtree ('split' or 'squash'),
@@ -1209,21 +1232,24 @@ split_list_relevant_parents () {
 				subtree_toptree=$(toptree_for_commit "$subtree")
 				if test "$merge_subtree" = "$subtree_toptree" # condition (2.b)
 				then
-					# OK, condition (2) is satisfied
-					debug "commit $rev is is a --rejoin merge"
-					case "$classification" in
-					split)
-						cache_set "$rev" "$subtree"
-						return
-						;;
-					squash)
-						echo "$subtree"
-						return
-						;;
-					*)
-						die "bad classification split-or-squash $subtree: $classification"
-						;;
-					esac
+					if git show --no-patch --no-show-signature --pretty=format:'%B' "$rev" | grep "^git-subtree-dir: $dir/*\$" >/dev/null # condition (2.c)
+					then
+						# OK, condition (2) is satisfied
+						debug "commit $rev is is a --rejoin merge"
+						case "$classification" in
+							split)
+								cache_set "$rev" "$subtree"
+								return
+								;;
+							squash)
+								echo "$subtree"
+								return
+								;;
+							*)
+								die "bad classification split-or-squash $subtree: $classification"
+								;;
+						esac
+					fi
 				else # condition (3.b)
 					local merge_toptree mainline_toptree
 					merge_toptree=$(toptree_for_commit "$rev")
