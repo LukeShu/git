@@ -1162,9 +1162,16 @@ split_list_relevant_parents () {
 	assert test $# = 1
 	local rev="$1"
 
-	local parents
-	parents=$(git rev-parse "$rev^@") ||
+	local raw_parents
+	raw_parents=$(git rev-parse "$rev^@") ||
 		die "could not read parents of commit '$rev'"
+	local parent parents=''
+	for parent in $raw_parents
+	do
+		parent=$(resolve_commit "$parent") ||
+			die "could not rev-parse commit '$parent'"
+		parents+=" $parent"
+	done
 
 	# If  (1.a) this is a simple 2-way merge,
 	# and (1.b) one of the parents has the subtree,
@@ -1211,24 +1218,20 @@ split_list_relevant_parents () {
 	set -- $parents
 	if test $# = 2
 	then
-		local p1 p2
-		p1=$(resolve_commit "$1") || die
-		p2=$(resolve_commit "$2") || die
-
 		local p1_subtree p2_subtree
-		p1_subtree=$(subtree_for_commit "$p1")
-		p2_subtree=$(subtree_for_commit "$p2")
+		p1_subtree=$(subtree_for_commit "$1")
+		p2_subtree=$(subtree_for_commit "$2")
 		local mainline='' mainline_subtree subtree
 		if test -n "$p1_subtree" && test -z "$p2_subtree"
 		then
-			mainline=$p1
+			mainline=$1
 			mainline_subtree=$p1_subtree
-			subtree=$p2
+			subtree=$2
 		elif test -z "$p1_subtree" && test -n "$p2_subtree"
 		then
-			mainline=$p2
+			mainline=$2
 			mainline_subtree=$p2_subtree
-			subtree=$p1
+			subtree=$1
 		fi
 		if test -n "$mainline" # condition (1)
 		then
