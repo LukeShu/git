@@ -461,14 +461,25 @@ cache_set_internal () {
 # mainline commit, or a subtree commit
 cache_set () {
 	assert test $# = 2
-	local key="$1"
-	local val="$2"
+	local key val
+	key=$(resolve_commit "$1") ||
+		die "could not rev-parse '$1'"
+	val=$2
+	case "$val" in
+	'counted'|'notree')
+		:
+		;;
+	*)
+		val=$(resolve_commit "$val") ||
+			die "could not rev-parse '$val'"
+		;;
+	esac
 
 	local cache_set_existed=false
 
 	cache_set_internal "$key" "$val"
 
-	if test "$cache_set_existed" = true
+	if test "$cache_set_existed" = true || ! $split_started
 	then
 		return
 	fi
@@ -486,17 +497,14 @@ cache_set () {
 		# record its ancestors as being subtree commits.  If
 		# we haven't started the split yet, then hold off for
 		# now; we'll do this in a big batch before starting.
-		if $split_started
-		then
-			local parents
-			parents=$(git rev-parse "$val^@") ||
-				die "could not read parents of commit '$val'"
-			local parent
-			for parent in $parents
-			do
-				cache_set "$parent" "$parent"
-			done
-		fi
+		local parents
+		parents=$(git rev-parse "$val^@") ||
+			die "could not read parents of commit '$val'"
+		local parent
+		for parent in $parents
+		do
+			cache_set "$parent" "$parent"
+		done
 		;;
 	esac
 }
@@ -1203,20 +1211,24 @@ split_list_relevant_parents () {
 	set -- $parents
 	if test $# = 2
 	then
+		local p1 p2
+		p1=$(resolve_commit "$1") || die
+		p2=$(resolve_commit "$2") || die
+
 		local p1_subtree p2_subtree
-		p1_subtree=$(subtree_for_commit "$1")
-		p2_subtree=$(subtree_for_commit "$2")
+		p1_subtree=$(subtree_for_commit "$p1")
+		p2_subtree=$(subtree_for_commit "$p2")
 		local mainline='' mainline_subtree subtree
 		if test -n "$p1_subtree" && test -z "$p2_subtree"
 		then
-			mainline=$1
+			mainline=$p1
 			mainline_subtree=$p1_subtree
-			subtree=$2
+			subtree=$p2
 		elif test -z "$p1_subtree" && test -n "$p2_subtree"
 		then
-			mainline=$2
+			mainline=$p2
 			mainline_subtree=$p2_subtree
-			subtree=$1
+			subtree=$p1
 		fi
 		if test -n "$mainline" # condition (1)
 		then
@@ -1368,6 +1380,28 @@ is_related() {
 	done <"$tmpfile"
 	rm -- "$tmpfile"
 	return "$result"
+}
+
+# Usage: like `git rev-list`, but it applies refs/replace/* refs.
+rev_list_wreplace() {
+	#assert test $# -gt 0
+
+	local oldfile
+	oldfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
+	git rev-list "$@" >"$oldfile" || die
+
+	if ! test -s "$oldfile"
+	then
+		rm -f "$oldfile"
+		return
+	fi
+
+	local sedfile
+	sedfile="$(mktemp -t git-subtree.XXXXXXXXXX)"
+	sed 's,^,refs/replace/,' <"$oldfile" | xargs git for-each-ref --format='s/%(refname:lstrip=2)/%(objectname)/' >"$sedfile"
+
+	sed -f "$sedfile" <"$oldfile"
+	rm -f "$oldfile" "$sedfile"
 }
 
 # Usage: split_classify_commit REV
@@ -1759,14 +1793,14 @@ cmd_split () {
 	done
 	if test "${#id_parents[@]}" -gt 0
 	then
-		git rev-list "${id_parents[@]}" | while read -r ancestor
+		rev_list_wreplace "${id_parents[@]}" | while read -r ancestor
 		do
 			cache_set_internal "$ancestor" "$ancestor"
 		done || exit $?
 	fi
 	if test "${#redo_parents[@]}" -gt 0
 	then
-		git rev-list "${redo_parents[@]}" | while read -r ancestor
+		rev_list_wreplace "${redo_parents[@]}" | while read -r ancestor
 		do
 			if test -z "$(cache_get "$ancestor")"
 			then
