@@ -1834,7 +1834,7 @@ cmd_split () {
 	then
 		say >&2 "No new revisions were found"
 		latest_split=$(cache_get "$rev") || exit $?
-		cache_set latest_split "$latest_split"
+		var_set latest_split "$latest_split"
 	elif test -n "$arg_split_rejoin"
 	then
 		debug "Merging split branch into HEAD..."
