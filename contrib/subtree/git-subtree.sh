@@ -1772,11 +1772,14 @@ cmd_split () {
 	split_process_annotated_commits "$rev"
 	progress_nl
 
-	progress "De-normalizing cache of split commits..."
-	id_parents=()
-	redo_parents=()
-	for file in "$scratchdir/cache"/*
+	progress "De-normalizing cache of split commits... inspecting normalized cache..."
+	local cache_entries=("$scratchdir/cache"/*)
+	local id_parents=()
+	local redo_parents=()
+	local i=0
+	for file in ${cache_entries+"${cache_entries[@]}"}
 	do
+		progress "De-normalizing cache of split commits... inspecting normalized cache... $((i++))/${#cache_entries[@]}"
 		key="${file##*/}"
 		if test "$key" = '*'
 		then
@@ -1794,23 +1797,41 @@ cmd_split () {
 			redo_parents+=("$key")
 		fi
 	done
-	if test "${#id_parents[@]}" -gt 0
-	then
-		rev_list_wreplace "${id_parents[@]}" | while read -r ancestor
-		do
-			cache_set_internal "$ancestor" "$ancestor"
-		done || exit $?
-	fi
-	if test "${#redo_parents[@]}" -gt 0
-	then
-		rev_list_wreplace "${redo_parents[@]}" | while read -r ancestor
-		do
-			if test -z "$(cache_get "$ancestor")"
-			then
-				attr_set "$ancestor" redo
-			fi
-		done || exit $?
-	fi
+	progress "De-normalizing cache of split commits... inspecting normalized cache... $i/${#cache_entries[@]}"
+	progress_nl
+	progress "De-normalizing cache of split commits... creating plan..."
+	{
+		if test "${#id_parents[@]}" -gt 0
+		then
+			rev_list_wreplace "${id_parents[@]}"
+		fi
+	} >"$scratchdir/id-list"
+	{
+		if test "${#redo_parents[@]}" -gt 0
+		then
+			rev_list_wreplace "${redo_parents[@]}"
+		fi
+	} >"$scratchdir/redo-list"
+	local steps
+	steps=$(cat "$scratchdir/id-list" "$scratchdir/redo-list"|wc -l)
+	progress_nl
+	i=0
+	local ancestor
+	while read -r ancestor
+	do
+		progress "De-normalizing cache of split commits... executing plan... $((i++))/$steps"
+		cache_set_internal "$ancestor" "$ancestor"
+	done <"$scratchdir/id-list"
+	while read -r ancestor
+	do
+		progress "De-normalizing cache of split commits... executing plan... $((i++))/$steps"
+		if test -z "$(cache_get "$ancestor")"
+		then
+			attr_set "$ancestor" redo
+		fi
+	done <"$scratchdir/redo-list"
+	rm -f "$scratchdir/id-list" "$scratchdir/redo-list"
+	progress "De-normalizing cache of split commits... executing plan... $i/$steps"
 	progress_nl
 
 	progress 'Counting commits...'
