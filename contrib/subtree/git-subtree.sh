@@ -436,7 +436,7 @@ cache_set_internal () {
 			die "caching commit:$key = subtree_commit:$val conflicts with existing subtree_commit:$oldval!"
 		fi
 	fi
-	if $split_started && has_attr "$key" redo && test "$(cache_get "$val")" != "$val"
+	if $split_started && has_attr "$key" redo && test "$val" != notree && test "$(cache_get "$val")" != "$val"
 	then
 		# shellcheck disable=SC2086 # $split_redoing is intentionally unquoted
 		die "$(printf '%s\n' \
