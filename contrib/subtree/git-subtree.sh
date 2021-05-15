@@ -1216,7 +1216,7 @@ split_list_relevant_parents () {
 
 	# shellcheck disable=SC2086 # $parents is intentionally unquoted
 	set -- $parents
-	if test $# = 2
+	if test $# = 2 # condition (1.a)
 	then
 		local p1_subtree p2_subtree
 		p1_subtree=$(subtree_for_commit "$1")
@@ -1414,6 +1414,11 @@ rev_list_wreplace() {
 #  - 'squash' (like 'split', but with squashed history)
 #  - 'mainline:tree'
 #  - 'mainline-notree'
+#
+# For the most part, this function *only* looks at the REV commit
+# itself, not looking at its ancestors or the cache.  However, as a
+# last-resort, to tell between 'split' and 'mainline:notree' it does
+# check if the commit is related to any subtree commits in the cache.
 split_classify_commit () {
 	assert test $# = 1
 	local rev="$1"
