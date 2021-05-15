@@ -336,7 +336,7 @@ main () {
 			die "prefix '$arg_prefix' already exists."
 		;;
 	*)
-		test -e "$arg_prefix" || # XXX
+		test -d "$arg_prefix" || # XXX
 			die "'$arg_prefix' does not exist; use 'git subtree add'"
 		;;
 	esac
@@ -1008,10 +1008,9 @@ subtree_for_commit () {
 	while read -r mode type tree name
 	do
 		assert test "$name" = "$dir"
-		assert test "$type" = "tree" -o "$type" = "commit"
 		if test "$type" != 'tree'
 		then
-			# ignore submodules and other not-a-plain-directory things
+			# ignore non-directories
 			continue
 		fi
 		echo "$tree"
