@@ -1213,6 +1213,17 @@ split_list_relevant_parents () {
 	#     (as !3.c.1 would indicate), then we must get our answer
 	#     from inspecting the commit itself, and that's what
 	#     split_classsify_commit does.
+	#
+	# On yet another hand,
+	# if (1.a) is satisfied,
+	# but (4.a) neither parent has the subtree (violating 1.b),
+	# and (4.b) this commit has exactly one of the parents as a subtree,
+	# then:
+	#
+	#  it is reasonably safe to assume that the merge is an 'add'.
+	#  Recognizing this is important for not crawling all of the
+	#  history for an 'subtree add --squash', or for a manual
+	#  'merge --allow-unrelated-histories --strategy=subtree'.
 
 	# shellcheck disable=SC2086 # $parents is intentionally unquoted
 	set -- $parents
@@ -1279,6 +1290,30 @@ split_list_relevant_parents () {
 						return
 					fi
 				fi
+			fi
+		elif test -z "$p1_subtree" && test -z "$p2_subtree" # condition (4.a)
+		then
+			local merge_subtree p1_toptree p2_toptree
+			merge_subtree=$(subtree_for_commit "$rev")
+			p1_toptree=$(toptree_for_commit "$1")
+			p2_toptree=$(toptree_for_commit "$2")
+			local mainline='' subtree
+			if test "$merge_subtree" = "$p1_toptree" && test "$merge_subtree" != "$p2_toptree"
+			then
+				mainline=$2
+				subtree=$1
+			elif test "$merge_subtree" = "$p2_toptree" && test "$merge_subtree" != "$p1_toptree"
+			then
+				mainline=$1
+				subtree=$2
+			fi
+			if test -n "$mainline" # condition (4.b)
+			then
+				# OK, condition 4 is satisfied.
+				debug "commit $rev is an add"
+				cache_set "$mainline" notree
+				echo "$subtree"
+				return
 			fi
 		fi
 	fi
