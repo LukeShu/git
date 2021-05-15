@@ -324,16 +324,16 @@ main () {
 
 	case "$arg_command" in
 	add)
-		test -e "$arg_prefix" &&
+		test -e "$arg_prefix" && # XXX
 			die "prefix '$arg_prefix' already exists."
 		;;
 	*)
-		test -e "$arg_prefix" ||
+		test -e "$arg_prefix" || # XXX
 			die "'$arg_prefix' does not exist; use 'git subtree add'"
 		;;
 	esac
 
-	dir="$(dirname "$arg_prefix/.")"
+	dir="$(dirname "$arg_prefix/.")" # XXX
 	readonly dir
 
 	debug "command: {$arg_command}"
@@ -1750,7 +1750,7 @@ cmd_split () {
 	local rev
 	case $# in
 	0)
-		rev=$(git rev-parse HEAD)
+		rev=$(git rev-parse 'HEAD^{commit}')
 		;;
 	1)
 		rev=$(resolve_commit "$1") ||
@@ -1760,6 +1760,10 @@ cmd_split () {
 		die "You must provide exactly one revision.  Got: '$*'"
 		;;
 	esac
+	if test "$rev" != "$(git rev-parse 'HEAD^{commit}')" && test -z "${GIT_TEST_DOITANYWAY:-}"
+	then
+		die "BUG: needs local directory"
+	fi
 	debug "rev: {$rev}"
 	debug
 
@@ -1828,10 +1832,9 @@ cmd_split () {
 		then
 			continue
 		fi
-		if test "$(cache_get "$key")" = "$key"
+		id_parents+=("$val")
+		if test "$val" != "$key"
 		then
-			id_parents+=("$key")
-		else
 			redo_parents+=("$key")
 		fi
 	done
@@ -1977,10 +1980,10 @@ cmd_merge () {
 
 	if test -n "$arg_addmerge_message"
 	then
-		git merge -Xsubtree="$arg_prefix" \
+		git merge -Xsubtree="$dir" \
 			--message="$arg_addmerge_message" "$rev"
 	else
-		git merge -Xsubtree="$arg_prefix" "$rev"
+		git merge -Xsubtree="$dir" "$rev"
 	fi
 }
 

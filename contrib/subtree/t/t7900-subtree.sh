@@ -956,7 +956,7 @@ test_expect_success 'push "sub dir"/ with a local rev' '
 		cd "$test_count" &&
 		bad_tree=$(git rev-parse --verify HEAD:"sub dir") &&
 		good_tree=$(git rev-parse --verify HEAD^:"sub dir") &&
-		git subtree push --prefix="sub dir" --annotate="*" ./"sub proj" HEAD^:from-mainline &&
+		GIT_TEST_DOITANYWAY=1 git subtree push --prefix="sub dir" --annotate="*" ./"sub proj" HEAD^:from-mainline &&
 		split_tree=$(git -C "sub proj" rev-parse --verify refs/heads/from-mainline:) &&
 		test "$split_tree" = "$good_tree"
 	)
@@ -1479,7 +1479,7 @@ test_expect_success 'subtree descendant check' '
 		git merge -m "merge should be skipped on subtree" no_subtree_work_branch &&
 
 		git subtree split --prefix folder_subtree/ --branch subtree_tip $defaultBranch &&
-		git subtree split --prefix folder_subtree/ --branch subtree_branch branch &&
+		GIT_TEST_DOITANYWAY=1 git subtree split --prefix folder_subtree/ --branch subtree_branch branch &&
 		test $(git rev-list --count subtree_tip..subtree_branch) = 0
 	)
 '
