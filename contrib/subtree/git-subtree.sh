@@ -762,8 +762,6 @@ split_process_annotated_commits () {
 
 					cache_set "$m_rev" "$m_split"
 				else
-					touch "$scratchdir/has-been-added"
-
 					# Sanity check that $m_mainline and $m_split reflect the actual
 					# commit graph of $m_rev.
 
@@ -1903,7 +1901,16 @@ cmd_split () {
 	then
 		debug "Merging split branch into HEAD..."
 		arg_addmerge_message="$(rejoin_msg)" || exit $?
-		if test -e "$scratchdir/has-been-added"
+
+		local has_been_added
+		if test -z "$arg_addmerge_squash"
+		then
+			has_been_added=$(git merge-base -- "$rev" "$latest_split") || true
+		else
+			has_been_added=$(find_latest_squash "$rev") || true
+		fi
+
+		if test -n "$has_been_added"
 		then
 			cmd_merge "$latest_split" >&2 || exit $?
 		else
